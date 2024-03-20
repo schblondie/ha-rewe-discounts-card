@@ -21,7 +21,10 @@ class CustomProductCard extends HTMLElement {
         }
         if (!newConfig.color) {
             newConfig.color = '#4CAF50'; // Default color
-        }        
+        }
+        if (!newConfig.language) {
+            newConfig.language = 'de'; // Default language
+        }       
         if (!newConfig.show) {
             newConfig.show = {};
             newConfig.show.border = true;
@@ -168,7 +171,7 @@ class CustomProductCard extends HTMLElement {
                             <img src="${product.picture_link}" alt="${product.product}" width="100">
                         </div>
                         <button class="product-button" data-name="${product.product}${this.config.show.rewe === true ? ' (REWE)' : ''}${this.config.show.price === true ? ` [${product.price}€]` : ''}">
-                            Zur Einkaufsliste hinzufügen
+                            ${this.config.language === 'de' ? 'Zum Einkaufszettel hinzufügen' : 'Add to shopping list'}
                             <span class="product-price-box">${product.price}€</span> <!-- Price in a separate box -->
                         </button>
                     </div>
@@ -234,6 +237,7 @@ class CustomProductCardEditor extends HTMLElement {
     static getStubConfig() {
         return {
             color: '#4CAF50',
+            language: 'de',
             show: {
                 border: true,
                 rewe: true,
@@ -256,6 +260,7 @@ class CustomProductCardEditor extends HTMLElement {
             entity: this.querySelector("#entityInput").value,
             shopping_list: this.querySelector("#shoppingListInput").value,
             color: this.querySelector("#colorInput").value,
+            language: this.querySelector("#languageInput").value,
             show: {
                 border: this.querySelector("#toggleBorder").checked,
                 rewe: this.querySelector("#toggleStoreInfo").checked,
@@ -296,6 +301,11 @@ class CustomProductCardEditor extends HTMLElement {
             <label for="colorInput">Color:</label>
             <input id="colorInput" type="text" value="${this.config.color || ''}">
             <br>
+            <label for="languageInput">Language:</label>
+            <select id="languageInput" type="text" value="${this.config.language || ''}">
+                <option value="de">German</option>
+                <option value="en">English</option>
+            </select>
             <label for="toggleBorder">Show border around products</label>
             <input id="toggleBorder" type="checkbox" ${this.config.show.border ? 'checked' : ''}>
             <br>
@@ -309,6 +319,7 @@ class CustomProductCardEditor extends HTMLElement {
         this.querySelector("#entityInput").addEventListener('input', () => this.configChanged());
         this.querySelector("#shoppingListInput").addEventListener('input', () => this.configChanged());
         this.querySelector("#colorInput").addEventListener('input', () => this.configChanged());
+        this.querySelector("#languageInput").addEventListener('input', () => this.configChanged());
         this.querySelector("#toggleBorder").addEventListener('change', () => this.configChanged());
         this.querySelector("#toggleStoreInfo").addEventListener('change', () => this.configChanged());
         this.querySelector("#togglePriceInfo").addEventListener('change', () => this.configChanged());
