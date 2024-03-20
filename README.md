@@ -1,7 +1,12 @@
 # ha-rewe-discounts-card
 A card to display the discounts from the REWE sensor with the ability to add them to the shopping list.
 
+## Requirements
+
+Requires the [REWE Discounts Integration](https://github.com/FaserF/ha-rewe) to be installed and configured.
+
 ## Installation
+
 If you have [HACS](https://hacs.xyz/), you can install this card by adding this repository to the custom repositories in the HACS settings.
 
 1. Add `https://github.com/schblondie/ha-rewe-discounts-card` as a custom repository in HACS.
