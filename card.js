@@ -302,9 +302,9 @@ class CustomProductCardEditor extends HTMLElement {
             <input id="colorInput" type="text" value="${this.config.color || ''}">
             <br>
             <label for="languageInput">Language:</label>
-            <select id="languageInput" type="text" value="${this.config.language || ''}">
-                <option value="de">German</option>
-                <option value="en">English</option>
+            <select id="languageInput" type="text">
+                <option value="de" ${this.config.language === 'de' ? 'selected' : ''}>German</option>
+                <option value="en" ${this.config.language === 'en' ? 'selected' : ''}>English</option>
             </select>
             <label for="toggleBorder">Show border around products</label>
             <input id="toggleBorder" type="checkbox" ${this.config.show.border ? 'checked' : ''}>
@@ -331,6 +331,6 @@ window.customCards = window.customCards || [];
 window.customCards.push({
     type: 'discounts-card',
     name: 'Discounts Card',
-    preview: './preview.png',
+    preview: false,
     description: 'A card to display the discounts from the REWE sensor and add them to the shopping list.',
 });
