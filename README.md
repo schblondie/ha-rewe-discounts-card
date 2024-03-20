@@ -29,7 +29,7 @@ I'm working on better GUI following the Lovelace style guide.
 | `entity`        | string  | **Required** |         | Rewe discount sensor (`sensor.rewe_`)                                                                                                                                             |
 | `shopping_list` | string  | **Required** |         | Shopping list to add items to                                                                                                                                                     |
 | `language`      | string  | **Optional** | `de`    | Language of the card (en, de)                                                                                                                                                     |
-| `color`         | string  | **Optional** | #4CAF50 | Color of the add to shopping list card (HEX or string)                                                                                                                            |
+| `color`         | string  | **Optional** | #4CAF50 | Color of the add to shopping list button (HEX or string)                                                                                                                          |
 | `show`          | object  | **Optional** |         | See [Show](#show)                                                                                                                                                                 |
 
 ### Show
