@@ -197,9 +197,14 @@ class CustomProductCard extends HTMLElement {
                 const productName = button.getAttribute('data-name');
                 const shoppingList = this.config.shopping_list;
 
-                this.hass.callService('shopping_list', 'add_item', {
-                    name: productName,
-                });
+                this.hass.callService(
+                    'todo', 
+                    'add_item',
+                    {
+                        entity_id: shoppingList,
+                        item: productName
+                    },
+                );
                 console.log(`Added ${productName} to ${shoppingList} shopping list.`);
             });
         });
