@@ -1,0 +1,29 @@
+{
+  "name": "ha-rewe-discounts-card",
+  "version": "1.0.0",
+  "description": "A card to display the discounts from the REWE sensor and add them to the shopping list.",
+  "main": "card.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schblondie/ha-rewe-discounts-card.git"
+  },
+  "keywords": [
+    "hass",
+    "homeassistant",
+    "lovelace",
+    "card",
+    "home-assistant",
+    "rewe",
+    "shopping-list",
+    "discounts"
+  ],
+  "author": "schblondie",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/schblondie/ha-rewe-discounts-card/issues"
+  },
+  "homepage": "https://github.com/schblondie/ha-rewe-discounts-card#readme"
+}
