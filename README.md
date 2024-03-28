@@ -31,7 +31,7 @@ I'm working on better GUI following the Lovelace style guide.
 | `language`      | string  | **Optional** | `de`    | Language of the card (en, de)                                                                                                                                                     |
 | `color`         | string  | **Optional** | #4CAF50 | Color of the add to shopping list button (HEX or string)                                                                                                                          |
 | `show`          | object  | **Optional** |         | See [Show](#show)                                                                                                                                                                 |
-
+| `exclude`       | list    | **Optional** |         | List of product categories to be excluded from the list                                                                                                                           |
 ### Show
 
 | Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
