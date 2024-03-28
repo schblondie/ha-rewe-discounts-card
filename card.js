@@ -27,6 +27,9 @@ class CustomProductCard extends HTMLElement {
             newConfig.show.rewe = true;
             newConfig.show.price = false;
         }
+        if (!newConfig.excluded) {
+            newConfig.excluded = [];
+        }
         this.config = newConfig;
     }
 
@@ -63,13 +66,16 @@ class CustomProductCard extends HTMLElement {
 
     render(products) {
         const categories = {};
-
+        const excludedCategories = new Set(this.config.excluded);
         products.forEach(product => {
             let category = product.category || 'Keine Kategorie';
             // Replace '-' with space and capitalize first letter of each word
             category = category.replace(/-/g, ' ').replace(/\b(?!und)\w/g, l => l.toUpperCase());
             // Replace 'ue', 'ae', 'oe' with their corresponding umlaut characters
             category = category.replace(/ue/g, 'ü').replace(/ae/g, 'ä').replace(/oe/g, 'ö');
+            if (excludedCategories.has(category)) {
+                return;
+            }
             if (!categories[category]) {
                 categories[category] = {
                     products: [],
