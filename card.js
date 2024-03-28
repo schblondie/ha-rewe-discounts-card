@@ -1,9 +1,5 @@
 class CustomProductCard extends HTMLElement {
 
-    static getConfigElement() {
-        return document.createElement('discounts-card-editor');
-    }
-
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
@@ -226,107 +222,6 @@ class CustomProductCard extends HTMLElement {
 
 customElements.define('discounts-card', CustomProductCard);
 
-
-class CustomProductCardEditor extends HTMLElement {
-    setConfig(config) {
-        // Create GUI for configuring the custom card
-        this.config = config;
-        this.render();
-    }
-
-    static getStubConfig() {
-        return {
-            color: '#4CAF50',
-            language: 'de',
-            show: {
-                border: true,
-                rewe: true,
-                price: false
-            }
-        };
-    }
-    configChanged(newConfig) {
-        const event = new Event("config-changed", {
-            bubbles: true,
-            composed: true,
-        });
-        event.detail = { config: this.getConfig() };
-        this.dispatchEvent(event);
-    }
-
-    getConfig() {
-        return {
-            type: 'custom:discounts-card',
-            entity: this.querySelector("#entityInput").value,
-            shopping_list: this.querySelector("#shoppingListInput").value,
-            color: this.querySelector("#colorInput").value,
-            language: this.querySelector("#languageInput").value,
-            show: {
-                border: this.querySelector("#toggleBorder").checked,
-                rewe: this.querySelector("#toggleStoreInfo").checked,
-                price: this.querySelector("#togglePriceInfo").checked
-            },
-        };
-    }
-
-    static getConfigElement() {
-        return document.createElement('div');
-    }
-
-    render() {
-        this.innerHTML = `
-            <style>
-                /* Define Home Assistant style */
-                :host {
-                    display: block;
-                    padding: 8px;
-                    font-size: 14px;
-                    font-family: var(--paper-font-body1_-_font-family);
-                    color: var(--primary-text-color);
-                }
-                label {
-                    display: block;
-                    margin-bottom: 4px;
-                }
-                input[type="text"], input[type="checkbox"] {
-                    margin-bottom: 8px;
-                }
-            </style>
-            <label for="entityInput">Entity:</label>
-            <input id="entityInput" type="text" value="${this.config.entity || ''}">
-            <br>
-            <label for="shoppingListInput">Shopping List:</label>
-            <input id="shoppingListInput" type="text" value="${this.config.shopping_list || ''}">
-            <br>
-            <label for="colorInput">Color:</label>
-            <input id="colorInput" type="text" value="${this.config.color || ''}">
-            <br>
-            <label for="languageInput">Language:</label>
-            <select id="languageInput" type="text">
-                <option value="de" ${this.config.language === 'de' ? 'selected' : ''}>German</option>
-                <option value="en" ${this.config.language === 'en' ? 'selected' : ''}>English</option>
-            </select>
-            <label for="toggleBorder">Show border around products</label>
-            <input id="toggleBorder" type="checkbox" ${this.config.show.border ? 'checked' : ''}>
-            <br>
-            <label for="toggleStoreInfo">Show (Rewe) after product in shopping list </label>
-            <input id="toggleStoreInfo" type="checkbox" ${this.config.show.rewe ? ' checked' : ''}>
-            <br>
-            <label for="togglePriceInfo">Show price in shopping list</label>
-            <input id="togglePriceInfo" type="checkbox" ${this.config.show.price ? ' checked' : ''}>
-            <br>
-        `;
-        this.querySelector("#entityInput").addEventListener('input', () => this.configChanged());
-        this.querySelector("#shoppingListInput").addEventListener('input', () => this.configChanged());
-        this.querySelector("#colorInput").addEventListener('input', () => this.configChanged());
-        this.querySelector("#languageInput").addEventListener('input', () => this.configChanged());
-        this.querySelector("#toggleBorder").addEventListener('change', () => this.configChanged());
-        this.querySelector("#toggleStoreInfo").addEventListener('change', () => this.configChanged());
-        this.querySelector("#togglePriceInfo").addEventListener('change', () => this.configChanged());
-    }
-}
-
-customElements.define('discounts-card-editor', CustomProductCardEditor);
 window.customCards = window.customCards || [];
 window.customCards.push({
     type: 'discounts-card',
