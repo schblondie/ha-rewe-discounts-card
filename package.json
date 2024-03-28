@@ -1,6 +1,6 @@
 {
   "name": "ha-rewe-discounts-card",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A card to display the discounts from the REWE sensor and add them to the shopping list.",
   "main": "card.js",
   "scripts": {
