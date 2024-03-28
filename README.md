@@ -39,3 +39,18 @@ I'm working on better GUI following the Lovelace style guide.
 | `border`        | boolean | **Optional** | `true`  | Show border around the products                                                                                                                                                   |
 | `rewe_logo`     | boolean | **Optional** | `true`  | Show (Rewe) behind the product in the shopping list                                                                                                                               |
 | `price`         | boolean | **Optional** | `false` | Show the price of the product in the shopping list                                                                                                                                |
+
+### Example
+
+```yaml
+type: custom:discounts-card
+entity: sensor.rewe_4040708
+shopping_list: todo.shopping_list
+color: ''
+language: de
+show:
+  border: true
+  rewe: true
+  price: false
+
+```
