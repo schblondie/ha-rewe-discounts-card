@@ -1,237 +1,284 @@
-class CustomProductCard extends HTMLElement {
-
+class ReweDiscountsCard extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
     }
 
     setConfig(config) {
-        // Create a new object to store the modified configuration
-        const newConfig = Object.assign({}, config);
-        newConfig.type = 'custom:discounts-card';
-        if (!newConfig.entity || !newConfig.entity.startsWith('sensor.rewe')) {
-            throw new Error('You need to specify the entity of the REWE sensor.');
+        if (!config.entity) {
+            throw new Error('Please define a REWE entity in your card configuration.');
         }
-        if (!newConfig.shopping_list || !newConfig.shopping_list.startsWith('todo.')) {
-            throw new Error('You need to specify the entity of the shopping list.');
-        }
-        if (!newConfig.color) {
-            newConfig.color = '#4CAF50'; // Default color
-        }
-        if (!newConfig.language) {
-            newConfig.language = 'de'; // Default language
-        }       
-        if (!newConfig.show) {
-            newConfig.show = {};
-            newConfig.show.border = true;
-            newConfig.show.rewe = true;
-            newConfig.show.price = false;
-        }
-        if (!newConfig.excluded) {
-            newConfig.excluded = [];
-        }
-        this.config = newConfig;
+        this.config = {
+            title: 'REWE Angebote',
+            show_images: true,
+            ...config
+        };
     }
 
-    getRoot() {
-        let element = this;
-        while (element.ownerDocument) {
-            element = element.ownerDocument
-            if (!element.ownerDocument) {
-                return element;
-            }
+    set hass(hass) {
+        const entity = hass.states[this.config.entity];
+        if (!entity) {
+            this.shadowRoot.innerHTML = `
+        <ha-card>
+          <div class="card-content error">Entity not found: ${this.config.entity}</div>
+        </ha-card>
+      `;
+            return;
         }
-        return null;
+
+        this.render(entity);
     }
 
-    async fetchData() {
-        try {
-            if (!this.hass) {
-                throw new Error('Home Assistant object is not available.');
+    render(entity) {
+        const offers = entity.attributes.offers || entity.attributes.discounts || entity.attributes.items || [];
+        const grouped = {};
+        offers.forEach(offer => {
+            const category = offer.category || offer.category_name || 'Weitere Angebote';
+            if (!grouped[category]) {
+                grouped[category] = [];
             }
-            const stateObj = this.hass.states[this.config.entity];
-            if (!stateObj) {
-                throw new Error('Entity not found.');
-            }
-            const attributes = stateObj.attributes;
-            const discountList = attributes['discounts'];
-            if (!discountList || !Array.isArray(discountList)) {
-                throw new Error('The discount list attribute is not found or is not an array.');
-            }
-            this.render(discountList);
-        } catch (error) {
-            console.error('Error fetching data:', error);
-        }
-    }
-
-    render(products) {
-        const categories = {};
-        const excludedCategories = new Set(this.config.excluded);
-        products.forEach(product => {
-            let category = product.category || 'Keine Kategorie';
-            // Replace '-' with space and capitalize first letter of each word
-            category = category.replace(/-/g, ' ').replace(/\b(?!und)\w/g, l => l.toUpperCase());
-            // Replace 'ue', 'ae', 'oe' with their corresponding umlaut characters
-            category = category.replace(/ue/g, 'ü').replace(/ae/g, 'ä').replace(/oe/g, 'ö');
-            if (excludedCategories.has(category)) {
-                return;
-            }
-            if (!categories[category]) {
-                categories[category] = {
-                    products: [],
-                    image: product.picture_link // Store the first product image as category image
-                };
-            }
-            categories[category].products.push(product);
+            grouped[category].push(offer);
         });
 
-        const template = document.createElement('template');
-        template.innerHTML = `
-        <style>
-        .product-card {
-            margin-top: 20px;
+        const cardTitle = this.config.title || entity.attributes.friendly_name || 'REWE Angebote';
+
+        this.shadowRoot.innerHTML = `
+      <style>
+        :host {
+          display: block;
         }
-        .category {
-            margin-bottom: 20px;
+        ha-card {
+          padding: 16px;
+          background: var(--ha-card-background, var(--card-background-color, white));
+          border-radius: var(--ha-card-border-radius, 12px);
+          box-shadow: var(--ha-card-box-shadow, none);
+          color: var(--primary-text-color, #212121);
+          font-family: var(--paper-font-body1_-_font-family);
+        }
+        .card-header {
+          font-size: 1.3rem;
+          font-weight: 600;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .category-group {
+          margin-bottom: 20px;
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          clear: both;
         }
         .category-title {
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            font-size: 20px;
+          font-size: 1.05rem;
+          font-weight: 700;
+          margin: 12px 0 8px 0;
+          padding-bottom: 4px;
+          border-bottom: 1px solid var(--divider-color, #e0e0e0);
+          color: var(--primary-text-color);
         }
-        .products {
-            margin-top: 10px;
-            display: none;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            grid-gap: 10px;
+        .offers-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          width: 100%;
         }
-        .products.active {
-            display: grid;
+        .offer-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 12px;
+          background: var(--secondary-background-color, #f9f9f9);
+          border-radius: 8px;
+          box-sizing: border-box;
+          width: 100%;
         }
-        .product {
-            border: ${this.config.show.border ? '1px solid #f0f0f0' : 'none'};
-            border-radius: 20px;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
+        .offer-image {
+          width: 48px;
+          height: 48px;
+          object-fit: contain;
+          flex-shrink: 0;
+          background: #ffffff;
+          border-radius: 6px;
+          padding: 2px;
         }
-        .product-title {
-            font-weight: bold;
-            align-self: center;
-            text-align: center;
-            display: flex;
-            justify-content: center;
+        .offer-details {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          flex: 1;
+          min-width: 0;
         }
-        .product-img {
-            align-self: center;
-            margin-top: 10px;
-            margin-bottom: 10px;
+        .offer-title {
+          font-size: 0.95rem;
+          font-weight: 500;
+          line-height: 1.2;
+          word-break: break-word;
         }
-        .product-price {
-            font-weight: bold;
-            color: ${this.config.color};
+        .offer-subtitle {
+          font-size: 0.8rem;
+          color: var(--secondary-text-color, #757575);
+          margin-top: 2px;
         }
-        .product-button {
-            margin-top: auto;
-            padding: 5px 10px;
-            border-radius: 5px;
-            background-color: ${this.config.color};
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .offer-price-container {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          flex-shrink: 0;
+          margin-left: auto;
         }
+        .offer-price {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: var(--primary-color, #cc071e);
+        }
+        .offer-old-price {
+          font-size: 0.8rem;
+          text-decoration: line-through;
+          color: var(--secondary-text-color, #9e9e9e);
+        }
+        .error {
+          color: var(--error-color, #db4437);
+        }
+      </style>
 
-        .product-price-box {
-            background-color: #f0f0f0; /* Different color for the price box */
-            padding: 3px 8px;
-            border-radius: 3px;
-            color: ${this.config.color};
-        }
-        .category-image {
-            width: 50px; /* Adjust image size as needed */
-            height: 50px;
-            margin-right: 10px; /* Add spacing between image and text */
-        }
-    </style>
-
-    <div class="product-card">
-        ${Object.entries(categories).map(([category, { products, image }]) => `
-            <div class="category">
-                <div class="category-title">
-                    <img class="category-image" src="${image}" alt="${category}"> ${category}
-                </div>
-                <div class="products">
-                ${products.map(product => `
-                    <div class="product">
-                        <div class="product-title">${product.product}</div>
-                        <div class="product-img">
-                            <img src="${product.picture_link}" alt="${product.product}" width="100">
-                        </div>
-                        <button class="product-button" data-name="${product.product}${this.config.show.rewe === true ? ' (REWE)' : ''}${this.config.show.price === true ? ` [${product.price}€]` : ''}">
-                            ${this.config.language === 'de' ? 'Zum Einkaufszettel hinzufügen' : 'Add to shopping list'}
-                            <span class="product-price-box">${product.price}€</span> <!-- Price in a separate box -->
-                        </button>
+      <ha-card>
+        <div class="card-header">${cardTitle}</div>
+        <div class="card-content">
+          ${Object.keys(grouped).length === 0 ? '<p>Keine aktuellen Angebote verfügbar.</p>' : ''}
+          ${Object.entries(grouped).map(([category, items]) => `
+            <div class="category-group">
+              <div class="category-title">${category}</div>
+              <div class="offers-list">
+                ${items.map(item => `
+                  <div class="offer-item">
+                    ${this.config.show_images && (item.image || item.image_url) ? `
+                      <img class="offer-image" src="${item.image || item.image_url}" alt="${item.title || item.name || ''}" loading="lazy" />
+                    ` : ''}
+                    <div class="offer-details">
+                      <div class="offer-title">${item.title || item.name || 'Angebot'}</div>
+                      ${item.subtitle || item.description ? `<div class="offer-subtitle">${item.subtitle || item.description}</div>` : ''}
                     </div>
+                    ${item.price || item.current_price ? `
+                      <div class="offer-price-container">
+                        <span class="offer-price">${item.price || item.current_price} €</span>
+                        ${item.old_price || item.regular_price ? `<span class="offer-old-price">${item.old_price || item.regular_price} €</span>` : ''}
+                      </div>
+                    ` : ''}
+                  </div>
                 `).join('')}
-                </div>
+              </div>
             </div>
-        `).join('')}
-    </div>
-
-        `;
-        this.shadowRoot.appendChild(template.content.cloneNode(true));
-        this.addListeners();
+          `).join('')}
+        </div>
+      </ha-card>
+    `;
     }
 
-
-    addListeners() {
-        const buttons = this.shadowRoot.querySelectorAll('button');
-        const categoryTitles = this.shadowRoot.querySelectorAll('.category-title');
-        categoryTitles.forEach(title => {
-            title.addEventListener('click', () => {
-                title.nextElementSibling.classList.toggle('active');
-            });
-        });
-        buttons.forEach(button => {
-            button.addEventListener('click', () => {
-                const productName = button.getAttribute('data-name');
-                const shoppingList = this.config.shopping_list;
-
-                this.hass.callService(
-                    'todo', 
-                    'add_item',
-                    {
-                        entity_id: shoppingList,
-                        item: productName
-                    },
-                );
-                console.log(`Added ${productName} to ${shoppingList} shopping list.`);
-            });
-        });
+    getCardSize() {
+        return 4;
+    }
+    static async getConfigElement() {
+        return document.createElement('ha-rewe-discounts-card-editor');
     }
 
-    connectedCallback() {
-        this.addEventListener('config-changed', (event) => {
-            this.setConfig(event.detail.config);
-        });
-        if (!this.rendered) {
-            this.fetchData();
-            this.rendered = true;
-        }
+    static getStubConfig(hass, entities) {
+        const reweEntity = entities.find(e => e.startsWith('sensor.rewe') || e.includes('rewe'));
+        return {
+            entity: reweEntity || '',
+            title: 'REWE Angebote',
+            show_images: true,
+            enable_search: false,
+            compact_view: false
+        };
     }
 }
 
-customElements.define('discounts-card', CustomProductCard);
+class ReweDiscountsCardEditor extends HTMLElement {
+    setConfig(config) {
+        this._config = config;
+        this.render();
+    }
+
+    set hass(hass) {
+        this._hass = hass;
+        this.render();
+    }
+
+    _valueChanged(ev) {
+        if (!this._config || !this._hass) return;
+        const newConfig = ev.detail.value;
+
+        // Dispatch config-changed event for Lovelace to save
+        const event = new CustomEvent('config-changed', {
+            detail: { config: newConfig },
+            bubbles: true,
+            composed: true
+        });
+        this.dispatchEvent(event);
+    }
+
+    render() {
+        if (!this._hass || !this._config) return;
+
+        if (!this._form) {
+            this._form = document.createElement('ha-form');
+            this._form.hass = this._hass;
+            this._form.addEventListener('value-changed', this._valueChanged.bind(this));
+            this.appendChild(this._form);
+        }
+
+        this._form.hass = this._hass;
+        this._form.data = this._config;
+
+        // ha-form schema using standard Home Assistant selectors
+        this._form.schema = [
+            {
+                name: 'entity',
+                label: 'REWE Entity',
+                required: true,
+                selector: {
+                    entity: {
+                        domain: ['sensor', 'binary_sensor']
+                    }
+                }
+            },
+            {
+                name: 'title',
+                label: 'Card Title',
+                selector: { text: {} }
+            },
+            {
+                name: '',
+                type: 'grid',
+                schema: [
+                    {
+                        name: 'show_images',
+                        label: 'Show Images',
+                        selector: { boolean: {} }
+                    },
+                    {
+                        name: 'enable_search',
+                        label: 'Show Search Bar',
+                        selector: { boolean: {} }
+                    },
+                    {
+                        name: 'compact_view',
+                        label: 'Compact Grid Mode',
+                        selector: { boolean: {} }
+                    }
+                ]
+            }
+        ];
+    }
+}
+
+customElements.define('discounts-card', ReweDiscountsCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-    type: 'discounts-card',
-    name: 'Discounts Card',
-    preview: false,
-    description: 'A card to display the discounts from the REWE sensor and add them to the shopping list.',
+  type: 'discounts-card',
+  name: 'REWE Discounts Card',
+  description: 'A custom card displaying REWE weekly market discounts cleanly grouped by category.'
 });
