@@ -274,11 +274,11 @@ class ReweDiscountsCardEditor extends HTMLElement {
     }
 }
 
-customElements.define('ha-rewe-discounts-card', ReweDiscountsCard);
+customElements.define('discounts-card', ReweDiscountsCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: 'ha-rewe-discounts-card',
+  type: 'discounts-card',
   name: 'REWE Discounts Card',
   description: 'A custom card displaying REWE weekly market discounts cleanly grouped by category.'
 });
