@@ -1,46 +1,129 @@
+/**
+ * REWE Discounts Card for Home Assistant Lovelace
+ * Repository: schblondie/ha-rewe-discounts-card
+ */
+
 class ReweDiscountsCard extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: 'open' });
+        this._filterText = '';
+    }
+
+    static async getConfigElement() {
+        return document.createElement('ha-rewe-discounts-card-editor');
+    }
+
+    static getStubConfig(hass, entities) {
+        const reweEntity = entities.find(
+            (e) => e.startsWith('sensor.rewe') || e.includes('rewe')
+        );
+        return {
+            entity: reweEntity || '',
+            title: 'REWE Angebote',
+            show_images: true,
+            enable_search: true,
+            collapsible_categories: true,
+            enable_todo: false,
+            todo_entity: ''
+        };
     }
 
     setConfig(config) {
         if (!config.entity) {
-            throw new Error('Please define a REWE entity in your card configuration.');
+            throw new Error('Please define a REWE entity in the card configuration.');
         }
         this.config = {
             title: 'REWE Angebote',
             show_images: true,
+            enable_search: true,
+            collapsible_categories: true,
+            enable_todo: false,
+            todo_entity: '',
             ...config
         };
     }
 
     set hass(hass) {
-        const entity = hass.states[this.config.entity];
+        this._hass = hass;
+        this.render();
+    }
+
+    _addItemToTodo(e, itemName) {
+        e.stopPropagation();
+        if (!this._hass) return;
+
+        if (this.config.todo_entity) {
+            this._hass.callService('todo', 'add_item', {
+                entity_id: this.config.todo_entity,
+                item: itemName
+            });
+        } else {
+            this._hass.callService('shopping_list', 'add_item', {
+                name: itemName
+            });
+        }
+
+        const btn = e.currentTarget;
+        btn.classList.add('added');
+        setTimeout(() => btn.classList.remove('added'), 1200);
+    }
+
+    _onSearchInput(e) {
+        this._filterText = e.target.value.toLowerCase().trim();
+        this.render();
+        const searchInput = this.shadowRoot.querySelector('.search-input');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
+        }
+    }
+
+    render() {
+        if (!this._hass || !this.config) return;
+
+        const entity = this._hass.states[this.config.entity];
         if (!entity) {
             this.shadowRoot.innerHTML = `
         <ha-card>
-          <div class="card-content error">Entity not found: ${this.config.entity}</div>
+          <div class="card-content error">
+            Entity not found: <code>${this.config.entity}</code>
+          </div>
         </ha-card>
       `;
             return;
         }
 
-        this.render(entity);
-    }
+        const rawOffers =
+            entity.attributes.discounts ||
+            entity.attributes.offers ||
+            entity.attributes.items ||
+            entity.attributes.data ||
+            [];
 
-    render(entity) {
-        const offers = entity.attributes.offers || entity.attributes.discounts || entity.attributes.items || [];
-        const grouped = {};
-        offers.forEach(offer => {
-            const category = offer.category || offer.category_name || 'Weitere Angebote';
-            if (!grouped[category]) {
-                grouped[category] = [];
-            }
-            grouped[category].push(offer);
+        const filteredOffers = rawOffers.filter((item) => {
+            if (!this._filterText) return true;
+            const title = (item.title || item.name || '').toLowerCase();
+            const cat = (item.category || item.category_name || '').toLowerCase();
+            const desc = (item.description || item.subtitle || '').toLowerCase();
+            return (
+                title.includes(this._filterText) ||
+                cat.includes(this._filterText) ||
+                desc.includes(this._filterText)
+            );
         });
 
-        const cardTitle = this.config.title || entity.attributes.friendly_name || 'REWE Angebote';
+        const grouped = {};
+        filteredOffers.forEach((item) => {
+            const cat = item.category || item.category_name || 'Weitere Angebote';
+            if (!grouped[cat]) {
+                grouped[cat] = [];
+            }
+            grouped[cat].push(item);
+        });
+
+        const cardTitle =
+            this.config.title || entity.attributes.friendly_name || 'REWE Angebote';
 
         this.shadowRoot.innerHTML = `
       <style>
@@ -49,54 +132,103 @@ class ReweDiscountsCard extends HTMLElement {
         }
         ha-card {
           padding: 16px;
-          background: var(--ha-card-background, var(--card-background-color, white));
+          background: var(--ha-card-background, var(--card-background-color, #ffffff));
           border-radius: var(--ha-card-border-radius, 12px);
           box-shadow: var(--ha-card-box-shadow, none);
           color: var(--primary-text-color, #212121);
-          font-family: var(--paper-font-body1_-_font-family);
+          font-family: var(--paper-font-body1_-_font-family, sans-serif);
+          box-sizing: border-box;
         }
         .card-header {
-          font-size: 1.3rem;
-          font-weight: 600;
-          margin-bottom: 16px;
           display: flex;
           align-items: center;
-          gap: 8px;
+          justify-content: space-between;
+          font-size: 1.25rem;
+          font-weight: 600;
+          margin-bottom: 12px;
+          color: var(--primary-text-color);
+        }
+        .search-container {
+          margin-bottom: 16px;
+        }
+        .search-input {
+          width: 100%;
+          padding: 9px 14px;
+          border-radius: 8px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: var(--secondary-background-color, #f4f4f4);
+          color: var(--primary-text-color);
+          box-sizing: border-box;
+          font-size: 0.95rem;
+          outline: none;
+          transition: border-color 0.2s ease;
+        }
+        .search-input:focus {
+          border-color: var(--primary-color, #cc071e);
         }
         .category-group {
-          margin-bottom: 20px;
-          display: flex;
-          flex-direction: column;
+          margin-bottom: 14px;
           width: 100%;
           clear: both;
         }
-        .category-title {
+        .category-group summary {
+          cursor: pointer;
+          user-select: none;
+          outline: none;
           font-size: 1.05rem;
           font-weight: 700;
-          margin: 12px 0 8px 0;
+          padding: 6px 0;
+          border-bottom: 1px solid var(--divider-color, #e0e0e0);
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          color: var(--primary-text-color);
+        }
+        .category-group:not([open]) summary {
+          border-bottom: none;
+          margin-bottom: 0;
+        }
+        .category-title-static {
+          font-size: 1.05rem;
+          font-weight: 700;
           padding-bottom: 4px;
           border-bottom: 1px solid var(--divider-color, #e0e0e0);
+          margin: 12px 0 8px 0;
           color: var(--primary-text-color);
+        }
+        .badge-count {
+          font-size: 0.75rem;
+          background: var(--secondary-background-color, #e0e0e0);
+          color: var(--secondary-text-color, #666);
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-weight: 500;
         }
         .offers-list {
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 8px;
           width: 100%;
+          margin-top: 6px;
         }
         .offer-item {
           display: flex;
           align-items: center;
           gap: 12px;
-          padding: 8px 12px;
-          background: var(--secondary-background-color, #f9f9f9);
+          padding: 10px 12px;
+          background: var(--secondary-background-color, #f8f9fa);
           border-radius: 8px;
           box-sizing: border-box;
           width: 100%;
+          transition: background-color 0.15s ease;
+        }
+        .offer-item:hover {
+          background: var(--table-row-alternative-background-color, #efefef);
         }
         .offer-image {
-          width: 48px;
-          height: 48px;
+          width: 50px;
+          height: 50px;
           object-fit: contain;
           flex-shrink: 0;
           background: #ffffff;
@@ -112,14 +244,15 @@ class ReweDiscountsCard extends HTMLElement {
         }
         .offer-title {
           font-size: 0.95rem;
-          font-weight: 500;
-          line-height: 1.2;
+          font-weight: 600;
+          line-height: 1.25;
           word-break: break-word;
+          color: var(--primary-text-color);
         }
         .offer-subtitle {
           font-size: 0.8rem;
           color: var(--secondary-text-color, #757575);
-          margin-top: 2px;
+          margin-top: 3px;
         }
         .offer-price-container {
           display: flex;
@@ -127,9 +260,10 @@ class ReweDiscountsCard extends HTMLElement {
           align-items: flex-end;
           flex-shrink: 0;
           margin-left: auto;
+          text-align: right;
         }
         .offer-price {
-          font-size: 1.05rem;
+          font-size: 1.1rem;
           font-weight: 700;
           color: var(--primary-color, #cc071e);
         }
@@ -138,60 +272,171 @@ class ReweDiscountsCard extends HTMLElement {
           text-decoration: line-through;
           color: var(--secondary-text-color, #9e9e9e);
         }
+        .btn-add-todo {
+          background: transparent;
+          border: 1px solid var(--divider-color, #ccc);
+          color: var(--primary-text-color);
+          border-radius: 50%;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          margin-left: 8px;
+          transition: all 0.2s ease;
+        }
+        .btn-add-todo:hover {
+          background: var(--primary-color, #cc071e);
+          border-color: var(--primary-color, #cc071e);
+          color: #ffffff;
+        }
+        .btn-add-todo.added {
+          background: #4caf50 !important;
+          border-color: #4caf50 !important;
+          color: #ffffff !important;
+          transform: scale(1.1);
+        }
+        .no-results {
+          padding: 16px 0;
+          text-align: center;
+          color: var(--secondary-text-color);
+          font-style: italic;
+        }
         .error {
           color: var(--error-color, #db4437);
         }
       </style>
 
       <ha-card>
-        <div class="card-header">${cardTitle}</div>
+        <div class="card-header">
+          <span>${cardTitle}</span>
+          <span class="badge-count">${filteredOffers.length} Angebote</span>
+        </div>
+
+        ${this.config.enable_search
+                ? `
+          <div class="search-container">
+            <input 
+              type="text" 
+              class="search-input" 
+              placeholder="Angebote durchsuchen..." 
+              value="${this._filterText}" 
+            />
+          </div>
+        `
+                : ''
+            }
+
         <div class="card-content">
-          ${Object.keys(grouped).length === 0 ? '<p>Keine aktuellen Angebote verfügbar.</p>' : ''}
-          ${Object.entries(grouped).map(([category, items]) => `
-            <div class="category-group">
-              <div class="category-title">${category}</div>
+          ${Object.keys(grouped).length === 0
+                ? `<div class="no-results">Keine aktuellen Angebote gefunden.</div>`
+                : ''
+            }
+
+          ${Object.entries(grouped)
+                .map(([category, items]) => {
+                    const categoryHtml = `
               <div class="offers-list">
-                ${items.map(item => `
-                  <div class="offer-item">
-                    ${this.config.show_images && (item.image || item.image_url) ? `
-                      <img class="offer-image" src="${item.image || item.image_url}" alt="${item.title || item.name || ''}" loading="lazy" />
-                    ` : ''}
-                    <div class="offer-details">
-                      <div class="offer-title">${item.title || item.name || 'Angebot'}</div>
-                      ${item.subtitle || item.description ? `<div class="offer-subtitle">${item.subtitle || item.description}</div>` : ''}
-                    </div>
-                    ${item.price || item.current_price ? `
-                      <div class="offer-price-container">
-                        <span class="offer-price">${item.price || item.current_price} €</span>
-                        ${item.old_price || item.regular_price ? `<span class="offer-old-price">${item.old_price || item.regular_price} €</span>` : ''}
+                ${items
+                            .map((item) => {
+                                const itemName = item.title || item.name || 'Angebot';
+                                const imgUrl =
+                                    item.picture_link ||
+                                    item.image ||
+                                    item.image_url ||
+                                    item.image_link;
+                                const price = item.price || item.current_price;
+                                const oldPrice = item.old_price || item.regular_price;
+                                const subtitle = item.subtitle || item.description;
+
+                                return `
+                    <div class="offer-item">
+                      ${this.config.show_images &&
+                                        imgUrl &&
+                                        typeof imgUrl === 'string' &&
+                                        imgUrl.trim() !== ''
+                                        ? `<img class="offer-image" src="${imgUrl}" alt="" loading="lazy" onerror="this.remove()" />`
+                                        : ''
+                                    }
+
+                      <div class="offer-details">
+                        <div class="offer-title">${itemName}</div>
+                        ${subtitle ? `<div class="offer-subtitle">${subtitle}</div>` : ''}
                       </div>
-                    ` : ''}
-                  </div>
-                `).join('')}
+
+                      ${price
+                                        ? `
+                        <div class="offer-price-container">
+                          <span class="offer-price">${price} €</span>
+                          ${oldPrice ? `<span class="offer-old-price">${oldPrice} €</span>` : ''}
+                        </div>
+                      `
+                                        : ''
+                                    }
+
+                      ${this.config.enable_todo
+                                        ? `
+                        <button class="btn-add-todo" title="Zur Einkaufsliste hinzufügen" data-item="${encodeURIComponent(itemName)}">
+                          <svg style="width:18px;height:18px" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                          </svg>
+                        </button>
+                      `
+                                        : ''
+                                    }
+                    </div>
+                  `;
+                            })
+                            .join('')}
               </div>
-            </div>
-          `).join('')}
+            `;
+
+                    if (this.config.collapsible_categories) {
+                        return `
+                <details class="category-group" open>
+                  <summary>
+                    <span>${category}</span>
+                    <span class="badge-count">${items.length}</span>
+                  </summary>
+                  ${categoryHtml}
+                </details>
+              `;
+                    } else {
+                        return `
+                <div class="category-group">
+                  <div class="category-title-static">${category} (${items.length})</div>
+                  ${categoryHtml}
+                </div>
+              `;
+                    }
+                })
+                .join('')}
         </div>
       </ha-card>
     `;
+
+        if (this.config.enable_search) {
+            const searchInput = this.shadowRoot.querySelector('.search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', this._onSearchInput.bind(this));
+            }
+        }
+
+        if (this.config.enable_todo) {
+            const buttons = this.shadowRoot.querySelectorAll('.btn-add-todo');
+            buttons.forEach((btn) => {
+                btn.addEventListener('click', (e) => {
+                    const itemName = decodeURIComponent(btn.getAttribute('data-item'));
+                    this._addItemToTodo(e, itemName);
+                });
+            });
+        }
     }
 
     getCardSize() {
-        return 4;
-    }
-    static async getConfigElement() {
-        return document.createElement('ha-rewe-discounts-card-editor');
-    }
-
-    static getStubConfig(hass, entities) {
-        const reweEntity = entities.find(e => e.startsWith('sensor.rewe') || e.includes('rewe'));
-        return {
-            entity: reweEntity || '',
-            title: 'REWE Angebote',
-            show_images: true,
-            enable_search: false,
-            compact_view: false
-        };
+        return 6;
     }
 }
 
@@ -210,7 +455,6 @@ class ReweDiscountsCardEditor extends HTMLElement {
         if (!this._config || !this._hass) return;
         const newConfig = ev.detail.value;
 
-        // Dispatch config-changed event for Lovelace to save
         const event = new CustomEvent('config-changed', {
             detail: { config: newConfig },
             bubbles: true,
@@ -224,7 +468,6 @@ class ReweDiscountsCardEditor extends HTMLElement {
 
         if (!this._form) {
             this._form = document.createElement('ha-form');
-            this._form.hass = this._hass;
             this._form.addEventListener('value-changed', this._valueChanged.bind(this));
             this.appendChild(this._form);
         }
@@ -232,7 +475,6 @@ class ReweDiscountsCardEditor extends HTMLElement {
         this._form.hass = this._hass;
         this._form.data = this._config;
 
-        // ha-form schema using standard Home Assistant selectors
         this._form.schema = [
             {
                 name: 'entity',
@@ -255,30 +497,47 @@ class ReweDiscountsCardEditor extends HTMLElement {
                 schema: [
                     {
                         name: 'show_images',
-                        label: 'Show Images',
+                        label: 'Show Product Images',
                         selector: { boolean: {} }
                     },
                     {
                         name: 'enable_search',
-                        label: 'Show Search Bar',
+                        label: 'Enable Live Search Bar',
                         selector: { boolean: {} }
                     },
                     {
-                        name: 'compact_view',
-                        label: 'Compact Grid Mode',
+                        name: 'collapsible_categories',
+                        label: 'Collapsible Category Accordions',
+                        selector: { boolean: {} }
+                    },
+                    {
+                        name: 'enable_todo',
+                        label: 'Enable Add-to-List Button',
                         selector: { boolean: {} }
                     }
                 ]
+            },
+            {
+                name: 'todo_entity',
+                label: 'Target Todo Entity (Optional)',
+                helper: 'Leave empty to use the default Home Assistant shopping list',
+                selector: {
+                    entity: {
+                        domain: 'todo'
+                    }
+                }
             }
         ];
     }
 }
 
-customElements.define('discounts-card', ReweDiscountsCard);
+customElements.define('ha-rewe-discounts-card', ReweDiscountsCard);
+customElements.define('ha-rewe-discounts-card-editor', ReweDiscountsCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: 'discounts-card',
-  name: 'REWE Discounts Card',
-  description: 'A custom card displaying REWE weekly market discounts cleanly grouped by category.'
+    type: 'ha-rewe-discounts-card',
+    name: 'REWE Discounts Card',
+    description:
+        'A custom Lovelace card for browsing weekly REWE discounts with search, image handling, and shopping list integration.'
 });
