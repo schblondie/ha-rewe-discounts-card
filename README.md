@@ -28,10 +28,16 @@ I'm working on better GUI following the Lovelace style guide.
 | `type`          | string  | **Required** |         | `custom:discounts-card`                                                                                                                                                           |
 | `entity`        | string  | **Required** |         | Rewe discount sensor (`sensor.rewe_`)                                                                                                                                             |
 | `shopping_list` | string  | **Required** |         | Shopping list to add items to                                                                                                                                                     |
-| `language`      | string  | **Optional** | `de`    | Language of the card (en, de)                                                                                                                                                     |
-| `color`         | string  | **Optional** | #4CAF50 | Color of the add to shopping list button (HEX or string)                                                                                                                          |
-| `show`          | object  | **Optional** |         | See [Show](#show)                                                                                                                                                                 |
-| `exclude`       | list    | **Optional** |         | List of product categories to be excluded from the list                                                                                                                           |
+| `show_images`                  | boolean | **Optional** | `true`  | Show product images or text placeholders when `picture_link` is missing                                                                                                           |
+| `enable_search`                | boolean | **Optional** | `true`  | Show the live search bar                                                                                                                                                           |
+| `collapsible_categories`       | boolean | **Optional** | `true`  | Allow categories to be collapsed                                                                                                                                                  |
+| `categories_open_by_default`   | boolean | **Optional** | `true`  | Open categories by default                                                                                                                                                         |
+| `category_filter_mode`         | string  | **Optional** | `none`   | Category filtering mode: `none`, `blacklist`, or `whitelist`                                                                                                                     |
+| `category_filter_categories`   | list    | **Optional** | `[]`    | Categories used by the selected filter mode                                                                                                                                       |
+| `enable_todo`                  | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                                                                                                                                   |
+| `todo_entity`                  | string  | **Optional** |         | Todo entity to use; otherwise the default shopping list is used                                                                                                                  |
+
+Category names are loaded from the configured entity for the GUI editor. They can also be entered directly in YAML.
 ### Show
 
 | Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
@@ -45,12 +51,12 @@ I'm working on better GUI following the Lovelace style guide.
 ```yaml
 type: custom:discounts-card
 entity: sensor.rewe_4040708
-shopping_list: todo.shopping_list
-color: ''
-language: de
-show:
-  border: true
-  rewe: true
-  price: false
+show_images: true
+categories_open_by_default: false
+category_filter_mode: blacklist
+category_filter_categories:
+  - Top-Angebote in deinem Markt
+enable_todo: true
+todo_entity: todo.shopping_list
 
 ```
