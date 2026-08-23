@@ -25,28 +25,28 @@ This card shows as addable card in the Lovelace configuration.
 
 ### Options
 
-| Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
-| --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`          | string  | **Required** |         | `custom:discounts-card`                                                                                                                                                           |
-| `entity`        | string  | **Required** |         | Discount sensor                                                                                                                                           ||
-| `show_images`                  | boolean | **Optional** | `true`  | Show product images or text placeholders when `picture_link` is missing                                                                                                           |
-| `enable_search`                | boolean | **Optional** | `true`  | Show the live search bar                                                                                                                                                           |
-| `collapsible_categories`       | boolean | **Optional** | `true`  | Allow categories to be collapsed                                                                                                                                                  |
-| `categories_open_by_default`   | boolean | **Optional** | `true`  | Open categories by default                                                                                                                                                         |
-| `category_filter_mode`         | string  | **Optional** | `none`   | Category filtering mode: `none`, `blacklist`, or `whitelist`                                                                                                                     |
-| `category_filter_categories`   | list    | **Optional** | `[]`    | Categories used by the selected filter mode                                                                                                                                       |
-| `enable_todo`                  | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                                                                                                                                   |
-| `todo_entity`                  | string  | **Optional** |         | Todo entity to use; otherwise the default shopping list is used                                                                                                                  |
+| Name                         | Type    | Requirement  | Default | Description                                                             |
+| ---------------------------- | ------- | ------------ | ------- | ----------------------------------------------------------------------- |
+| `type`                       | string  | **Required** |         | `custom:discounts-card`                                                 |
+| `entity`                     | string  | **Required** |         | Discount sensor                                                         |  |
+| `show_images`                | boolean | **Optional** | `true`  | Show product images or text placeholders when `picture_link` is missing |
+| `enable_search`              | boolean | **Optional** | `true`  | Show the live search bar                                                |
+| `collapsible_categories`     | boolean | **Optional** | `true`  | Allow categories to be collapsed                                        |
+| `categories_open_by_default` | boolean | **Optional** | `true`  | Open categories by default                                              |
+| `category_filter_mode`       | string  | **Optional** | `none`  | Category filtering mode: `none`, `blacklist`, or `whitelist`            |
+| `category_filter_categories` | list    | **Optional** | `[]`    | Categories used by the selected filter mode                             |
+| `enable_todo`                | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                         |
+| `todo_entity`                | string  | **Optional** |         | Todo entity to use; otherwise the default shopping list is used         |
 
 Category names are loaded from the configured entity for the GUI editor. They can also be entered directly in YAML.
 ### Shopping list
 
-| Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
-| --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | 
-| `enable_todo`   | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                                                                                                                                   |
-| `todo_entity`   | string  | **Optional** |         | Todo entity to use; otherwise the default Home Assistant shopping list is used                                                                                                   |
-| `logo`     | boolean | **Optional** | `true`  | Show the name of the supermarket behind the product in the shopping list                                                                                                                               |
-| `price`         | boolean | **Optional** | `false` | Show the price of the product in the shopping list                                                                                                                                |
+| Name          | Type    | Requirement  | Default | Description                                                                    |
+| ------------- | ------- | ------------ | ------- | ------------------------------------------------------------------------------ |
+| `enable_todo` | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                                |
+| `todo_entity` | string  | **Optional** |         | Todo entity to use; otherwise the default Home Assistant shopping list is used |
+| `logo`        | boolean | **Optional** | `true`  | Show the name of the supermarket behind the product in the shopping list       |
+| `price`       | boolean | **Optional** | `false` | Show the price of the product in the shopping list                             |
 
 Legacy `show.rewe_logo` and `show.price` are still supported for backward compatibility. Legacy `show.border` is not supported.
 

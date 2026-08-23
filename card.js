@@ -24,12 +24,17 @@ class DiscountsCard extends HTMLElement {
         e.includes('rewe') ||
         e.startsWith('sensor.edeka') ||
         e.includes('edeka') ||
+        e.startsWith('sensor.lidl') ||
+        e.includes('lidl') ||
         e.includes('discount') ||
         e.includes('offer')
     ) || '';
 
-    const isEdeka = supermarketEntity.toLowerCase().includes('edeka');
-    const defaultTitle = isEdeka ? 'EDEKA Angebote' : supermarketEntity ? 'REWE Angebote' : 'Angebote';
+    const entLower = supermarketEntity.toLowerCase();
+    let defaultTitle = 'Angebote';
+    if (entLower.includes('edeka')) defaultTitle = 'EDEKA Angebote';
+    else if (entLower.includes('lidl')) defaultTitle = 'LIDL Angebote';
+    else if (entLower.includes('rewe')) defaultTitle = 'REWE Angebote';
 
     return {
       entity: supermarketEntity,
@@ -147,6 +152,7 @@ class DiscountsCard extends HTMLElement {
     const source = `${entityId} ${friendlyName}`;
 
     if (source.includes('edeka')) return 'EDEKA';
+    if (source.includes('lidl')) return 'LIDL';
     if (source.includes('rewe')) return 'REWE';
     return '';
   }
@@ -482,13 +488,13 @@ class DiscountsCard extends HTMLElement {
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     const headerBadge = this.shadowRoot.querySelector('.header-badge');
     if (!entity || !contentContainer) return;
-    const hasActiveSearch = this._filterQuery.length > 0;
 
     const rawOffers =
       entity.attributes.discounts ||
       entity.attributes.offers ||
       entity.attributes.items ||
       entity.attributes.data ||
+      entity.attributes.coupons ||
       [];
 
     const filteredOffers = rawOffers.filter((item) => {
@@ -507,9 +513,16 @@ class DiscountsCard extends HTMLElement {
         return false;
       }
       if (!this._filterQuery) return true;
-      const title = (item.title || item.name || item.product || '').toLowerCase();
+      const title = (item.title || item.name || item.product || item.brand || '').toLowerCase();
       const cat = (item.category || item.category_name || '').toLowerCase();
-      const desc = (item.description || item.subtitle || item.base_price || '').toLowerCase();
+      const desc = (
+        item.description ||
+        item.subtitle ||
+        item.packaging ||
+        item.price_per_unit ||
+        item.base_price ||
+        ''
+      ).toLowerCase();
       return (
         title.includes(this._filterQuery) ||
         cat.includes(this._filterQuery) ||
@@ -542,12 +555,22 @@ class DiscountsCard extends HTMLElement {
           <div class="offers-list">
             ${items
             .map((item) => {
-              const itemName = item.title || item.name || item.product || item.base_price || 'Angebot';
-              const imgUrl = item.picture_link;
+              const itemName = item.title || item.name || item.product || item.brand || item.base_price || 'Angebot';
+              const imgUrl = item.picture_link || item.image_url || item.image || item.picture || item.photo;
               const sanitizedImgUrl = this._sanitizeImageUrl(imgUrl);
               const price = item.price || item.current_price;
               const oldPrice = item.old_price || item.regular_price;
-              const subtitle = item.subtitle || item.description || item.base_price;
+
+              // Format subtitle with fallback for packaging / unit price
+              let subtitle = item.subtitle || item.description || item.base_price;
+              if (!subtitle && item.packaging) {
+                subtitle = item.packaging.split('\n')[0];
+              } else if (!subtitle && item.price_per_unit) {
+                subtitle = item.price_per_unit;
+              } else if (!subtitle && item.brand && item.brand !== itemName) {
+                subtitle = item.brand;
+              }
+
               const displayPrice =
                 typeof price === 'string' && price.includes('€')
                   ? price
@@ -608,7 +631,7 @@ class DiscountsCard extends HTMLElement {
         `;
 
         if (this.config.collapsible_categories) {
-          const isOpen = hasActiveSearch
+          const isOpen = this._filterQuery.length > 0
             ? true
             : this._categoryOpenState[category] ?? this.config.categories_open_by_default;
           return `
@@ -634,9 +657,7 @@ class DiscountsCard extends HTMLElement {
     if (this.config.collapsible_categories) {
       contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
         categoryGroup.addEventListener('toggle', () => {
-          if (hasActiveSearch) {
-            return;
-          }
+          if (this._filterQuery.length > 0) return;
           const category = decodeURIComponent(categoryGroup.dataset.category);
           this._categoryOpenState[category] = categoryGroup.open;
         });
@@ -853,6 +874,7 @@ class DiscountsCardEditor extends HTMLElement {
       entity.attributes.offers ||
       entity.attributes.items ||
       entity.attributes.data ||
+      entity.attributes.coupons ||
       [];
 
     const categories = [
@@ -877,5 +899,5 @@ window.customCards.push({
   type: 'discounts-card',
   name: 'Discounts Card',
   description:
-    'A custom Lovelace card for browsing weekly REWE or Edeka discounts with search, image handling, and shopping list integration.'
+    'A custom Lovelace card for browsing weekly REWE, Edeka, or Lidl discounts with search, image handling, and shopping list integration.'
 });
