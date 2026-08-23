@@ -17,9 +17,7 @@ If you have [HACS](https://hacs.xyz/), you can install this card by adding this 
 
 ## Configuration
 
-This card shows as addable card in the Lovelace configuration. You can add it to your Lovelace configuration and configure it from there.
-The card has a rudimentary GUI configuration. You can configure it from there.
-I'm working on better GUI following the Lovelace style guide.
+This card shows as addable card in the Lovelace configuration.
 
 ### Options
 
