@@ -14,16 +14,26 @@ class DiscountsCard extends HTMLElement {
   }
 
   static async getConfigElement() {
-    return document.createElement('ha-rewe-discounts-card-editor');
+    return document.createElement('discounts-card-editor');
   }
 
   static getStubConfig(hass, entities) {
-    const reweEntity = entities.find(
-      (e) => e.startsWith('sensor.rewe') || e.includes('rewe')
-    );
+    const supermarketEntity = entities?.find(
+      (e) =>
+        e.startsWith('sensor.rewe') ||
+        e.includes('rewe') ||
+        e.startsWith('sensor.edeka') ||
+        e.includes('edeka') ||
+        e.includes('discount') ||
+        e.includes('offer')
+    ) || '';
+
+    const isEdeka = supermarketEntity.toLowerCase().includes('edeka');
+    const defaultTitle = isEdeka ? 'EDEKA Angebote' : supermarketEntity ? 'REWE Angebote' : 'Angebote';
+
     return {
-      entity: reweEntity || '',
-      title: 'REWE Angebote',
+      entity: supermarketEntity,
+      title: defaultTitle,
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
@@ -39,9 +49,6 @@ class DiscountsCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error('Please define a REWE entity in the card configuration.');
-    }
     const showConfig = config.show || {};
     const logoSetting =
       config.logo ??
@@ -49,8 +56,8 @@ class DiscountsCard extends HTMLElement {
       showConfig.logo ??
       showConfig.rewe_logo ??
       true;
+
     this.config = {
-      title: 'REWE Angebote',
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
@@ -90,11 +97,10 @@ class DiscountsCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const oldEntity = this._hass?.states[this.config?.entity];
-    const newEntity = hass.states[this.config?.entity];
+    const oldEntity = this.config?.entity ? this._hass?.states[this.config.entity] : null;
+    const newEntity = this.config?.entity ? hass.states[this.config.entity] : null;
     this._hass = hass;
 
-    // Avoid unnecessary re-renders if the entity state hasn't changed
     if (this._hasSkeleton && oldEntity === newEntity) {
       return;
     }
@@ -140,7 +146,7 @@ class DiscountsCard extends HTMLElement {
     ).toLowerCase();
     const source = `${entityId} ${friendlyName}`;
 
-    if (source.includes('edeka')) return 'Edeka';
+    if (source.includes('edeka')) return 'EDEKA';
     if (source.includes('rewe')) return 'REWE';
     return '';
   }
@@ -154,8 +160,6 @@ class DiscountsCard extends HTMLElement {
       this._searchRestoreCategoryState = { ...this._categoryOpenState };
     }
 
-    // As soon as the search is empty, always restore the pre-search category state.
-    // This also recovers from edge-cases where the transition event may have been missed.
     if (!hasActiveSearch && this._searchRestoreCategoryState) {
       this._categoryOpenState = this._searchRestoreCategoryState
         ? { ...this._searchRestoreCategoryState }
@@ -199,12 +203,24 @@ class DiscountsCard extends HTMLElement {
   render() {
     if (!this._hass || !this.config) return;
 
+    if (!this.config.entity) {
+      this._hasSkeleton = false;
+      this.shadowRoot.innerHTML = `
+        <ha-card style="padding: 16px;">
+          <div style="color: var(--secondary-text-color);">
+            Please select an entity in the card configuration editor.
+          </div>
+        </ha-card>
+      `;
+      return;
+    }
+
     const entity = this._hass.states[this.config.entity];
     if (!entity) {
       this._hasSkeleton = false;
       this.shadowRoot.innerHTML = `
-        <ha-card>
-          <div class="card-content error" style="padding: 16px; color: var(--error-color, #db4437);">
+        <ha-card style="padding: 16px;">
+          <div class="card-content error" style="color: var(--error-color, #db4437);">
             Entity not found: <code>${this._escapeHtml(this.config.entity)}</code>
           </div>
         </ha-card>
@@ -221,8 +237,13 @@ class DiscountsCard extends HTMLElement {
   }
 
   _renderSkeleton(entity) {
+    const storeLabel = this._detectStoreLabel();
+    const fallbackTitle = storeLabel ? `${storeLabel} Angebote` : 'Angebote';
     const cardTitle =
-      this.config.title || entity.attributes.friendly_name || 'Angebote';
+      (this.config.title && this.config.title.trim() !== '')
+        ? this.config.title
+        : (entity.attributes?.friendly_name || fallbackTitle);
+
     const safeCardTitle = this._escapeHtml(cardTitle);
 
     this.shadowRoot.innerHTML = `
@@ -457,7 +478,7 @@ class DiscountsCard extends HTMLElement {
   }
 
   _updateOffersList() {
-    const entity = this._hass.states[this.config.entity];
+    const entity = this._hass?.states[this.config.entity];
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     const headerBadge = this.shadowRoot.querySelector('.header-badge');
     if (!entity || !contentContainer) return;
@@ -706,7 +727,7 @@ class DiscountsCardEditor extends HTMLElement {
     this._form.computeLabel = (schema) => {
       const labels = {
         entity: 'Supermarket Entity',
-        title: 'Card Title',
+        title: 'Card Title (Optional)',
         show_images: 'Show Product Images',
         enable_search: 'Enable Live Search Bar',
         collapsible_categories: 'Collapsible Category Accordions',
@@ -735,7 +756,7 @@ class DiscountsCardEditor extends HTMLElement {
       },
       {
         name: 'title',
-        label: 'Card Title',
+        label: 'Card Title (Optional)',
         selector: { text: {} }
       },
       {
@@ -822,10 +843,10 @@ class DiscountsCardEditor extends HTMLElement {
   }
 
   _getCategories() {
-    if (!this._hass || !this._config) return [];
+    if (!this._hass || !this._config || !this._config.entity) return [];
 
     const entity = this._hass.states[this._config.entity];
-    if (!entity) return [];
+    if (!entity || !entity.attributes) return [];
 
     const offers =
       entity.attributes.discounts ||
@@ -833,9 +854,14 @@ class DiscountsCardEditor extends HTMLElement {
       entity.attributes.items ||
       entity.attributes.data ||
       [];
-    return [...new Set(
-      offers.map((item) => item.category || item.category_name || 'Weitere Angebote')
-    )].sort();
+
+    const categories = [
+      ...new Set(
+        offers.map((item) => item.category || item.category_name || 'Weitere Angebote')
+      )
+    ].sort();
+
+    return categories.map((cat) => ({ value: cat, label: cat }));
   }
 }
 
