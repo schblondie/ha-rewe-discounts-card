@@ -25,9 +25,8 @@ I'm working on better GUI following the Lovelace style guide.
 
 | Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
 | --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `type`          | string  | **Required** |         | `custom:discounts-card`                                                                                                                                                           |
-| `entity`        | string  | **Required** |         | Rewe discount sensor (`sensor.rewe_`)                                                                                                                                             |
-| `shopping_list` | string  | **Required** |         | Shopping list to add items to                                                                                                                                                     |
+| `type`          | string  | **Required** |         | `custom:ha-rewe-discounts-card`                                                                                                                                                           |
+| `entity`        | string  | **Required** |         | Rewe discount sensor (`sensor.rewe_`)                                                                                                                                             ||
 | `show_images`                  | boolean | **Optional** | `true`  | Show product images or text placeholders when `picture_link` is missing                                                                                                           |
 | `enable_search`                | boolean | **Optional** | `true`  | Show the live search bar                                                                                                                                                           |
 | `collapsible_categories`       | boolean | **Optional** | `true`  | Allow categories to be collapsed                                                                                                                                                  |
@@ -38,18 +37,21 @@ I'm working on better GUI following the Lovelace style guide.
 | `todo_entity`                  | string  | **Optional** |         | Todo entity to use; otherwise the default shopping list is used                                                                                                                  |
 
 Category names are loaded from the configured entity for the GUI editor. They can also be entered directly in YAML.
-### Show
+### Shopping list
 
 | Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
-| --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `border`        | boolean | **Optional** | `true`  | Show border around the products                                                                                                                                                   |
+| --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | 
+| `enable_todo`   | boolean | **Optional** | `false` | Show buttons for adding products to a todo list                                                                                                                                   |
+| `todo_entity`   | string  | **Optional** |         | Todo entity to use; otherwise the default Home Assistant shopping list is used                                                                                                   |
 | `rewe_logo`     | boolean | **Optional** | `true`  | Show (Rewe) behind the product in the shopping list                                                                                                                               |
 | `price`         | boolean | **Optional** | `false` | Show the price of the product in the shopping list                                                                                                                                |
+
+Legacy `show.rewe_logo` and `show.price` are still supported for backward compatibility. Legacy `show.border` is not supported.
 
 ### Example
 
 ```yaml
-type: custom:discounts-card
+type: custom:ha-rewe-discounts-card
 entity: sensor.rewe_4040708
 show_images: true
 categories_open_by_default: false

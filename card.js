@@ -7,8 +7,9 @@ class ReweDiscountsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._filterText = '';
+    this._filterQuery = '';
     this._categoryOpenState = {};
+    this._hasSkeleton = false;
   }
 
   static async getConfigElement() {
@@ -29,7 +30,9 @@ class ReweDiscountsCard extends HTMLElement {
       category_filter_mode: 'none',
       category_filter_categories: [],
       enable_todo: false,
-      todo_entity: ''
+      todo_entity: '',
+      rewe_logo: true,
+      price: false
     };
   }
 
@@ -37,6 +40,7 @@ class ReweDiscountsCard extends HTMLElement {
     if (!config.entity) {
       throw new Error('Please define a REWE entity in the card configuration.');
     }
+    const showConfig = config.show || {};
     this.config = {
       title: 'REWE Angebote',
       show_images: true,
@@ -47,30 +51,50 @@ class ReweDiscountsCard extends HTMLElement {
       category_filter_categories: [],
       enable_todo: false,
       todo_entity: '',
+      rewe_logo: showConfig.rewe_logo ?? true,
+      price: showConfig.price ?? false,
       ...config
     };
+
+    if (showConfig.rewe_logo !== undefined && config.rewe_logo === undefined) {
+      this.config.rewe_logo = showConfig.rewe_logo;
+    }
+    if (showConfig.price !== undefined && config.price === undefined) {
+      this.config.price = showConfig.price;
+    }
+
+    this._hasSkeleton = false;
+    if (this._hass) {
+      this.render();
+    }
   }
 
   set hass(hass) {
+    const oldEntity = this._hass?.states[this.config?.entity];
+    const newEntity = hass.states[this.config?.entity];
     this._hass = hass;
-    if (this.shadowRoot.activeElement?.classList.contains('search-input')) {
+
+    // Avoid unnecessary re-renders if the entity state hasn't changed
+    if (this._hasSkeleton && oldEntity === newEntity) {
       return;
     }
     this.render();
   }
 
-  _addItemToTodo(e, itemName) {
+  _addItemToTodo(e, itemName, itemPrice = '') {
     e.stopPropagation();
     if (!this._hass) return;
+
+    const formattedItemName = this._formatTodoItemName(itemName, itemPrice);
 
     if (this.config.todo_entity) {
       this._hass.callService('todo', 'add_item', {
         entity_id: this.config.todo_entity,
-        item: itemName
+        item: formattedItemName
       });
     } else {
       this._hass.callService('shopping_list', 'add_item', {
-        name: itemName
+        name: formattedItemName
       });
     }
 
@@ -79,76 +103,75 @@ class ReweDiscountsCard extends HTMLElement {
     setTimeout(() => btn.classList.remove('added'), 1200);
   }
 
+  _formatTodoItemName(itemName, itemPrice) {
+    const suffix = this.config.rewe_logo !== false ? ' (Rewe)' : '';
+    const baseName = `${itemName}${suffix}`;
+    if (!this.config.price || !itemPrice) {
+      return baseName;
+    }
+    return `${baseName} - ${itemPrice}`;
+  }
+
   _onSearchInput(e) {
-    this._filterText = e.target.value.toLowerCase().trim();
-    this.render();
+    this._filterQuery = e.target.value.toLowerCase().trim();
+    this._updateOffersList();
+  }
+
+  _escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  _sanitizeImageUrl(url) {
+    if (typeof url !== 'string') return '';
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+
+    try {
+      const parsed = new URL(trimmed, window.location.origin);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return parsed.href;
+      }
+    } catch (e) {
+      return '';
+    }
+
+    return '';
   }
 
   render() {
     if (!this._hass || !this.config) return;
 
-    const activeElement = this.shadowRoot.activeElement;
-    const previousSearchInput = this.shadowRoot.querySelector('.search-input');
-    const searchWasFocused = activeElement?.classList.contains('search-input');
-    const selectionStart = searchWasFocused ? activeElement.selectionStart : null;
-    const selectionEnd = searchWasFocused ? activeElement.selectionEnd : null;
-
     const entity = this._hass.states[this.config.entity];
     if (!entity) {
+      this._hasSkeleton = false;
       this.shadowRoot.innerHTML = `
         <ha-card>
-          <div class="card-content error">
-            Entity not found: <code>${this.config.entity}</code>
+          <div class="card-content error" style="padding: 16px; color: var(--error-color, #db4437);">
+            Entity not found: <code>${this._escapeHtml(this.config.entity)}</code>
           </div>
         </ha-card>
       `;
       return;
     }
 
-    const rawOffers =
-      entity.attributes.discounts ||
-      entity.attributes.offers ||
-      entity.attributes.items ||
-      entity.attributes.data ||
-      [];
+    if (!this._hasSkeleton) {
+      this._renderSkeleton(entity);
+      this._hasSkeleton = true;
+    }
 
-    const filteredOffers = rawOffers.filter((item) => {
-      const category = item.category || item.category_name || 'Weitere Angebote';
-      const filterCategories = this.config.category_filter_categories || [];
-      if (
-        this.config.category_filter_mode === 'blacklist' &&
-        filterCategories.includes(category)
-      ) {
-        return false;
-      }
-      if (
-        this.config.category_filter_mode === 'whitelist' &&
-        !filterCategories.includes(category)
-      ) {
-        return false;
-      }
-      if (!this._filterText) return true;
-      const title = (item.title || item.name || item.product || '').toLowerCase();
-      const cat = (item.category || item.category_name || '').toLowerCase();
-      const desc = (item.description || item.subtitle || item.base_price || '').toLowerCase();
-      return (
-        title.includes(this._filterText) ||
-        cat.includes(this._filterText) ||
-        desc.includes(this._filterText)
-      );
-    });
+    this._updateOffersList();
+  }
 
-    const grouped = {};
-    filteredOffers.forEach((item) => {
-      const cat = item.category || item.category_name || 'Weitere Angebote';
-      if (!grouped[cat]) {
-        grouped[cat] = [];
-      }
-      grouped[cat].push(item);
-    });
-
+  _renderSkeleton(entity) {
     const cardTitle =
       this.config.title || entity.attributes.friendly_name || 'REWE Angebote';
+    const safeCardTitle = this._escapeHtml(cardTitle);
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -347,153 +370,193 @@ class ReweDiscountsCard extends HTMLElement {
           color: var(--secondary-text-color);
           font-style: italic;
         }
-        .error {
-          color: var(--error-color, #db4437);
-        }
       </style>
 
       <ha-card>
         <div class="card-header">
-          <span>${cardTitle}</span>
-          <span class="badge-count">${filteredOffers.length} Angebote</span>
+          <span>${safeCardTitle}</span>
+          <span class="badge-count header-badge">0 Angebote</span>
         </div>
 
         ${this.config.enable_search
         ? `
-          <div class="search-container">
-            <input 
-              type="text" 
-              class="search-input" 
-              placeholder="Angebote durchsuchen..." 
-              value="${this._filterText}" 
-            />
-          </div>
-        `
+            <div class="search-container">
+              <input 
+                type="text" 
+                class="search-input" 
+                placeholder="Angebote durchsuchen..."
+                aria-label="Angebote durchsuchen" 
+              />
+            </div>
+          `
         : ''
       }
 
-        <div class="card-content">
-          ${Object.keys(grouped).length === 0
-        ? `<div class="no-results">Keine aktuellen Angebote gefunden.</div>`
-        : ''
+        <div class="card-content"></div>
+      </ha-card>
+    `;
+
+    if (this.config.enable_search) {
+      const searchInput = this.shadowRoot.querySelector('.search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', this._onSearchInput.bind(this));
       }
+    }
+  }
 
-          ${Object.entries(grouped)
-        .map(([category, items]) => {
-          const categoryHtml = `
-              <div class="offers-list">
-                ${items
-              .map((item) => {
-                const itemName = item.title || item.name || item.product || item.base_price || 'Angebot';
-                const imgUrl = item.picture_link;
-                const price = item.price || item.current_price;
-                const oldPrice = item.old_price || item.regular_price;
-                const subtitle = item.subtitle || item.description || item.base_price;
-                const displayPrice =
-                  typeof price === 'string' && price.includes('€')
-                    ? price
-                    : price
-                      ? `${price} €`
-                      : '';
-                const displayOldPrice =
-                  typeof oldPrice === 'string' && oldPrice.includes('€')
-                    ? oldPrice
-                    : oldPrice
-                      ? `${oldPrice} €`
-                      : '';
+  _updateOffersList() {
+    const entity = this._hass.states[this.config.entity];
+    const contentContainer = this.shadowRoot.querySelector('.card-content');
+    const headerBadge = this.shadowRoot.querySelector('.header-badge');
+    if (!entity || !contentContainer) return;
 
-                return `
-                    <div class="offer-item">
-                      ${this.config.show_images &&
-                    imgUrl &&
-                    typeof imgUrl === 'string' &&
-                    imgUrl.trim() !== ''
-                    ? `<img class="offer-image" src="${imgUrl}" alt="" loading="lazy" onerror="this.remove()" />`
-                    : this.config.show_images
-                      ? `<div class="offer-image-placeholder">${itemName}</div>`
-                      : ''
-                  }
+    const rawOffers =
+      entity.attributes.discounts ||
+      entity.attributes.offers ||
+      entity.attributes.items ||
+      entity.attributes.data ||
+      [];
 
-                      <div class="offer-details">
-                        <div class="offer-title">${itemName}</div>
-                        ${subtitle ? `<div class="offer-subtitle">${subtitle}</div>` : ''}
-                      </div>
+    const filteredOffers = rawOffers.filter((item) => {
+      const category = item.category || item.category_name || 'Weitere Angebote';
+      const filterCategories = this.config.category_filter_categories || [];
+      if (
+        this.config.category_filter_mode === 'blacklist' &&
+        filterCategories.includes(category)
+      ) {
+        return false;
+      }
+      if (
+        this.config.category_filter_mode === 'whitelist' &&
+        !filterCategories.includes(category)
+      ) {
+        return false;
+      }
+      if (!this._filterQuery) return true;
+      const title = (item.title || item.name || item.product || '').toLowerCase();
+      const cat = (item.category || item.category_name || '').toLowerCase();
+      const desc = (item.description || item.subtitle || item.base_price || '').toLowerCase();
+      return (
+        title.includes(this._filterQuery) ||
+        cat.includes(this._filterQuery) ||
+        desc.includes(this._filterQuery)
+      );
+    });
 
-                      ${displayPrice
-                    ? `
+    if (headerBadge) {
+      headerBadge.textContent = `${filteredOffers.length} Angebote`;
+    }
+
+    const grouped = {};
+    filteredOffers.forEach((item) => {
+      const cat = item.category || item.category_name || 'Weitere Angebote';
+      if (!grouped[cat]) {
+        grouped[cat] = [];
+      }
+      grouped[cat].push(item);
+    });
+
+    if (Object.keys(grouped).length === 0) {
+      contentContainer.innerHTML = `<div class="no-results">Keine aktuellen Angebote gefunden.</div>`;
+      return;
+    }
+
+    contentContainer.innerHTML = Object.entries(grouped)
+      .map(([category, items]) => {
+        const safeCategory = this._escapeHtml(category);
+        const categoryHtml = `
+          <div class="offers-list">
+            ${items
+            .map((item) => {
+              const itemName = item.title || item.name || item.product || item.base_price || 'Angebot';
+              const imgUrl = item.picture_link;
+              const sanitizedImgUrl = this._sanitizeImageUrl(imgUrl);
+              const price = item.price || item.current_price;
+              const oldPrice = item.old_price || item.regular_price;
+              const subtitle = item.subtitle || item.description || item.base_price;
+              const displayPrice =
+                typeof price === 'string' && price.includes('€')
+                  ? price
+                  : price
+                    ? `${price} €`
+                    : '';
+              const displayOldPrice =
+                typeof oldPrice === 'string' && oldPrice.includes('€')
+                  ? oldPrice
+                  : oldPrice
+                    ? `${oldPrice} €`
+                    : '';
+              const safeItemName = this._escapeHtml(itemName);
+              const safeImgUrl = this._escapeHtml(sanitizedImgUrl);
+              const safeSubtitle = this._escapeHtml(subtitle);
+              const safeDisplayPrice = this._escapeHtml(displayPrice);
+              const safeDisplayOldPrice = this._escapeHtml(displayOldPrice);
+
+              return `
+                  <div class="offer-item">
+                    ${this.config.show_images && sanitizedImgUrl
+                  ? `<img class="offer-image" src="${safeImgUrl}" alt="" loading="lazy" onerror="this.remove()" />`
+                  : this.config.show_images
+                    ? `<div class="offer-image-placeholder">${safeItemName}</div>`
+                    : ''
+                }
+
+                    <div class="offer-details">
+                      <div class="offer-title">${safeItemName}</div>
+                      ${subtitle ? `<div class="offer-subtitle">${safeSubtitle}</div>` : ''}
+                    </div>
+
+                    ${displayPrice
+                  ? `
                         <div class="offer-price-container">
-                          <span class="offer-price">${displayPrice}</span>
-                          ${displayOldPrice ? `<span class="offer-old-price">${displayOldPrice}</span>` : ''}
+                          <span class="offer-price">${safeDisplayPrice}</span>
+                          ${displayOldPrice ? `<span class="offer-old-price">${safeDisplayOldPrice}</span>` : ''}
                         </div>
                       `
-                    : ''
-                  }
+                  : ''
+                }
 
-                      ${this.config.enable_todo
-                    ? `
-                        <button class="btn-add-todo" title="Zur Einkaufsliste hinzufügen" data-item="${encodeURIComponent(itemName)}">
+                    ${this.config.enable_todo
+                  ? `
+                        <button class="btn-add-todo" title="Zur Einkaufsliste hinzufügen" data-item="${encodeURIComponent(itemName)}" data-price="${encodeURIComponent(displayPrice || '')}">
                           <svg style="width:18px;height:18px" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                           </svg>
                         </button>
                       `
-                    : ''
-                  }
-                    </div>
-                  `;
-              })
-              .join('')}
-              </div>
-            `;
+                  : ''
+                }
+                  </div>
+                `;
+            })
+            .join('')}
+          </div>
+        `;
 
-          if (this.config.collapsible_categories) {
-            return `
-                  <details class="category-group" data-category="${encodeURIComponent(category)}" ${this._categoryOpenState[category] ?? this.config.categories_open_by_default
-                ? 'open'
-                : ''
-              }>
-                  <summary>
-                    <span>${category}</span>
-                    <span class="badge-count">${items.length}</span>
-                  </summary>
-                  ${categoryHtml}
-                </details>
-              `;
-          } else {
-            return `
-                <div class="category-group">
-                  <div class="category-title-static">${category} (${items.length})</div>
-                  ${categoryHtml}
-                </div>
-              `;
-          }
-        })
-        .join('')}
-        </div>
-      </ha-card>
-    `;
-
-    if (this.config.enable_search) {
-      let searchInput = this.shadowRoot.querySelector('.search-input');
-      if (searchInput) {
-        if (previousSearchInput) {
-          searchInput.replaceWith(previousSearchInput);
-          searchInput = previousSearchInput;
-          searchInput.value = this._filterText;
+        if (this.config.collapsible_categories) {
+          const isOpen = this._categoryOpenState[category] ?? this.config.categories_open_by_default;
+          return `
+            <details class="category-group" data-category="${encodeURIComponent(category)}" ${isOpen ? 'open' : ''}>
+              <summary>
+                <span>${safeCategory}</span>
+                <span class="badge-count">${items.length}</span>
+              </summary>
+              ${categoryHtml}
+            </details>
+          `;
+        } else {
+          return `
+            <div class="category-group">
+              <div class="category-title-static">${safeCategory} (${items.length})</div>
+              ${categoryHtml}
+            </div>
+          `;
         }
-        if (!searchInput._reweInputListener) {
-          searchInput.addEventListener('input', this._onSearchInput.bind(this));
-          searchInput._reweInputListener = true;
-        }
-        if (searchWasFocused) {
-          searchInput.focus();
-          searchInput.setSelectionRange(selectionStart, selectionEnd);
-        }
-      }
-    }
+      })
+      .join('');
 
     if (this.config.collapsible_categories) {
-      this.shadowRoot.querySelectorAll('.category-group').forEach((categoryGroup) => {
+      contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
         categoryGroup.addEventListener('toggle', () => {
           const category = decodeURIComponent(categoryGroup.dataset.category);
           this._categoryOpenState[category] = categoryGroup.open;
@@ -502,11 +565,11 @@ class ReweDiscountsCard extends HTMLElement {
     }
 
     if (this.config.enable_todo) {
-      const buttons = this.shadowRoot.querySelectorAll('.btn-add-todo');
-      buttons.forEach((btn) => {
+      contentContainer.querySelectorAll('.btn-add-todo').forEach((btn) => {
         btn.addEventListener('click', (e) => {
           const itemName = decodeURIComponent(btn.getAttribute('data-item'));
-          this._addItemToTodo(e, itemName);
+          const itemPrice = decodeURIComponent(btn.getAttribute('data-price') || '');
+          this._addItemToTodo(e, itemName, itemPrice);
         });
       });
     }
@@ -530,7 +593,31 @@ class ReweDiscountsCardEditor extends HTMLElement {
 
   _valueChanged(ev) {
     if (!this._config || !this._hass) return;
-    const newConfig = ev.detail.value;
+    const newConfig = { ...ev.detail.value };
+    const previousCategories = Array.isArray(this._config.category_filter_categories)
+      ? this._config.category_filter_categories
+      : [];
+    const incomingCategories = Array.isArray(newConfig.category_filter_categories)
+      ? newConfig.category_filter_categories
+      : [];
+    const categoriesChangedBySelect =
+      JSON.stringify(incomingCategories) !== JSON.stringify(previousCategories);
+
+    const textCategories = newConfig.category_filter_categories_text;
+    if (typeof textCategories === 'string') {
+      const parsed = textCategories
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+
+      const previousText = previousCategories.join(', ');
+      const textChangedByUser = textCategories.trim() !== previousText;
+
+      if (!categoriesChangedBySelect && textChangedByUser) {
+        newConfig.category_filter_categories = parsed;
+      }
+    }
+    delete newConfig.category_filter_categories_text;
 
     const event = new CustomEvent('config-changed', {
       detail: { config: newConfig },
@@ -550,7 +637,32 @@ class ReweDiscountsCardEditor extends HTMLElement {
     }
 
     this._form.hass = this._hass;
-    this._form.data = this._config;
+    const currentCategories = Array.isArray(this._config.category_filter_categories)
+      ? this._config.category_filter_categories
+      : [];
+    this._form.data = {
+      ...this._config,
+      category_filter_categories_text: currentCategories.join(', ')
+    };
+
+    this._form.computeLabel = (schema) => {
+      const labels = {
+        entity: 'REWE Entity',
+        title: 'Card Title',
+        show_images: 'Show Product Images',
+        enable_search: 'Enable Live Search Bar',
+        collapsible_categories: 'Collapsible Category Accordions',
+        categories_open_by_default: 'Categories Open by Default',
+        category_filter_mode: 'Category Filter Mode',
+        category_filter_categories: 'Filtered Categories (Select)',
+        category_filter_categories_text: 'Filtered Categories (Comma-separated)',
+        enable_todo: 'Enable Add-to-List Button',
+        todo_entity: 'Target Todo Entity (Optional)',
+        rewe_logo: 'Append (Rewe) in list item',
+        price: 'Append price in list item'
+      };
+      return labels[schema.name] || schema.name;
+    };
 
     this._form.schema = [
       {
@@ -608,7 +720,7 @@ class ReweDiscountsCardEditor extends HTMLElement {
           },
           {
             name: 'category_filter_categories',
-            label: 'Filtered Categories',
+            label: 'Filtered Categories (Select)',
             selector: {
               select: {
                 multiple: true,
@@ -617,8 +729,23 @@ class ReweDiscountsCardEditor extends HTMLElement {
             }
           },
           {
+            name: 'category_filter_categories_text',
+            label: 'Filtered Categories (Comma-separated)',
+            selector: { text: {} }
+          },
+          {
             name: 'enable_todo',
             label: 'Enable Add-to-List Button',
+            selector: { boolean: {} }
+          },
+          {
+            name: 'rewe_logo',
+            label: 'Append (Rewe) in list item',
+            selector: { boolean: {} }
+          },
+          {
+            name: 'price',
+            label: 'Append price in list item',
             selector: { boolean: {} }
           }
         ]
@@ -656,6 +783,7 @@ class ReweDiscountsCardEditor extends HTMLElement {
 
 customElements.define('ha-rewe-discounts-card', ReweDiscountsCard);
 customElements.define('ha-rewe-discounts-card-editor', ReweDiscountsCardEditor);
+customElements.define('discounts-card', ReweDiscountsCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
