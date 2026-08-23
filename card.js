@@ -8,6 +8,7 @@ class ReweDiscountsCard extends HTMLElement {
         super();
         this.attachShadow({ mode: 'open' });
         this._filterText = '';
+        this._categoryOpenState = {};
     }
 
     static async getConfigElement() {
@@ -24,6 +25,9 @@ class ReweDiscountsCard extends HTMLElement {
             show_images: true,
             enable_search: true,
             collapsible_categories: true,
+            categories_open_by_default: true,
+            category_filter_mode: 'none',
+            category_filter_categories: [],
             enable_todo: false,
             todo_entity: ''
         };
@@ -38,6 +42,9 @@ class ReweDiscountsCard extends HTMLElement {
             show_images: true,
             enable_search: true,
             collapsible_categories: true,
+            categories_open_by_default: true,
+            category_filter_mode: 'none',
+            category_filter_categories: [],
             enable_todo: false,
             todo_entity: '',
             ...config
@@ -46,6 +53,9 @@ class ReweDiscountsCard extends HTMLElement {
 
     set hass(hass) {
         this._hass = hass;
+      if (this.shadowRoot.activeElement?.classList.contains('search-input')) {
+        return;
+      }
         this.render();
     }
 
@@ -72,15 +82,16 @@ class ReweDiscountsCard extends HTMLElement {
     _onSearchInput(e) {
         this._filterText = e.target.value.toLowerCase().trim();
         this.render();
-        const searchInput = this.shadowRoot.querySelector('.search-input');
-        if (searchInput) {
-            searchInput.focus();
-            searchInput.selectionStart = searchInput.selectionEnd = searchInput.value.length;
-        }
     }
 
     render() {
         if (!this._hass || !this.config) return;
+
+        const activeElement = this.shadowRoot.activeElement;
+        const previousSearchInput = this.shadowRoot.querySelector('.search-input');
+        const searchWasFocused = activeElement?.classList.contains('search-input');
+        const selectionStart = searchWasFocused ? activeElement.selectionStart : null;
+        const selectionEnd = searchWasFocused ? activeElement.selectionEnd : null;
 
         const entity = this._hass.states[this.config.entity];
         if (!entity) {
@@ -102,10 +113,24 @@ class ReweDiscountsCard extends HTMLElement {
             [];
 
         const filteredOffers = rawOffers.filter((item) => {
+          const category = item.category || item.category_name || 'Weitere Angebote';
+          const filterCategories = this.config.category_filter_categories || [];
+          if (
+            this.config.category_filter_mode === 'blacklist' &&
+            filterCategories.includes(category)
+          ) {
+            return false;
+          }
+          if (
+            this.config.category_filter_mode === 'whitelist' &&
+            !filterCategories.includes(category)
+          ) {
+            return false;
+          }
             if (!this._filterText) return true;
-            const title = (item.title || item.name || '').toLowerCase();
+            const title = (item.title || item.name || item.product || '').toLowerCase();
             const cat = (item.category || item.category_name || '').toLowerCase();
-            const desc = (item.description || item.subtitle || '').toLowerCase();
+            const desc = (item.description || item.subtitle || item.base_price || '').toLowerCase();
             return (
                 title.includes(this._filterText) ||
                 cat.includes(this._filterText) ||
@@ -235,6 +260,24 @@ class ReweDiscountsCard extends HTMLElement {
           border-radius: 6px;
           padding: 2px;
         }
+        .offer-image-placeholder {
+          width: 50px;
+          height: 50px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          padding: 4px;
+          box-sizing: border-box;
+          background: var(--secondary-background-color, #f4f4f4);
+          border-radius: 6px;
+          color: var(--secondary-text-color, #757575);
+          font-size: 0.7rem;
+          font-weight: 600;
+          line-height: 1.1;
+          text-align: center;
+          word-break: break-word;
+        }
         .offer-details {
           display: flex;
           flex-direction: column;
@@ -341,15 +384,23 @@ class ReweDiscountsCard extends HTMLElement {
               <div class="offers-list">
                 ${items
                             .map((item) => {
-                                const itemName = item.title || item.name || 'Angebot';
-                                const imgUrl =
-                                    item.picture_link ||
-                                    item.image ||
-                                    item.image_url ||
-                                    item.image_link;
+                                const itemName = item.title || item.name || item.product || item.base_price || 'Angebot';
+                                const imgUrl = item.picture_link;
                                 const price = item.price || item.current_price;
                                 const oldPrice = item.old_price || item.regular_price;
-                                const subtitle = item.subtitle || item.description;
+                                const subtitle = item.subtitle || item.description || item.base_price;
+                                const displayPrice =
+                                  typeof price === 'string' && price.includes('€')
+                                    ? price
+                                    : price
+                                    ? `${price} €`
+                                    : '';
+                                const displayOldPrice =
+                                  typeof oldPrice === 'string' && oldPrice.includes('€')
+                                    ? oldPrice
+                                    : oldPrice
+                                    ? `${oldPrice} €`
+                                    : '';
 
                                 return `
                     <div class="offer-item">
@@ -358,6 +409,8 @@ class ReweDiscountsCard extends HTMLElement {
                                         typeof imgUrl === 'string' &&
                                         imgUrl.trim() !== ''
                                         ? `<img class="offer-image" src="${imgUrl}" alt="" loading="lazy" onerror="this.remove()" />`
+                                        : this.config.show_images
+                                        ? `<div class="offer-image-placeholder">${itemName}</div>`
                                         : ''
                                     }
 
@@ -366,11 +419,11 @@ class ReweDiscountsCard extends HTMLElement {
                         ${subtitle ? `<div class="offer-subtitle">${subtitle}</div>` : ''}
                       </div>
 
-                      ${price
+                      ${displayPrice
                                         ? `
                         <div class="offer-price-container">
-                          <span class="offer-price">${price} €</span>
-                          ${oldPrice ? `<span class="offer-old-price">${oldPrice} €</span>` : ''}
+                          <span class="offer-price">${displayPrice}</span>
+                          ${displayOldPrice ? `<span class="offer-old-price">${displayOldPrice}</span>` : ''}
                         </div>
                       `
                                         : ''
@@ -395,7 +448,11 @@ class ReweDiscountsCard extends HTMLElement {
 
                     if (this.config.collapsible_categories) {
                         return `
-                <details class="category-group" open>
+                  <details class="category-group" data-category="${encodeURIComponent(category)}" ${
+                        this._categoryOpenState[category] ?? this.config.categories_open_by_default
+                          ? 'open'
+                          : ''
+                      }>
                   <summary>
                     <span>${category}</span>
                     <span class="badge-count">${items.length}</span>
@@ -418,10 +475,31 @@ class ReweDiscountsCard extends HTMLElement {
     `;
 
         if (this.config.enable_search) {
-            const searchInput = this.shadowRoot.querySelector('.search-input');
+          let searchInput = this.shadowRoot.querySelector('.search-input');
             if (searchInput) {
-                searchInput.addEventListener('input', this._onSearchInput.bind(this));
+            if (previousSearchInput) {
+              searchInput.replaceWith(previousSearchInput);
+              searchInput = previousSearchInput;
+              searchInput.value = this._filterText;
             }
+            if (!searchInput._reweInputListener) {
+              searchInput.addEventListener('input', this._onSearchInput.bind(this));
+              searchInput._reweInputListener = true;
+            }
+            if (searchWasFocused) {
+              searchInput.focus();
+              searchInput.setSelectionRange(selectionStart, selectionEnd);
+            }
+            }
+        }
+
+        if (this.config.collapsible_categories) {
+          this.shadowRoot.querySelectorAll('.category-group').forEach((categoryGroup) => {
+            categoryGroup.addEventListener('toggle', () => {
+              const category = decodeURIComponent(categoryGroup.dataset.category);
+              this._categoryOpenState[category] = categoryGroup.open;
+            });
+          });
         }
 
         if (this.config.enable_todo) {
@@ -510,6 +588,35 @@ class ReweDiscountsCardEditor extends HTMLElement {
                         label: 'Collapsible Category Accordions',
                         selector: { boolean: {} }
                     },
+                      {
+                        name: 'categories_open_by_default',
+                        label: 'Categories Open by Default',
+                        selector: { boolean: {} }
+                      },
+                      {
+                        name: 'category_filter_mode',
+                        label: 'Category Filter Mode',
+                        selector: {
+                          select: {
+                            options: [
+                              { value: 'none', label: 'Show all categories' },
+                              { value: 'blacklist', label: 'Blacklist selected categories' },
+                              { value: 'whitelist', label: 'Whitelist selected categories' }
+                            ],
+                            mode: 'dropdown'
+                          }
+                        }
+                      },
+                      {
+                        name: 'category_filter_categories',
+                        label: 'Filtered Categories',
+                        selector: {
+                          select: {
+                            multiple: true,
+                            options: this._getCategories()
+                          }
+                        }
+                      },
                     {
                         name: 'enable_todo',
                         label: 'Enable Add-to-List Button',
@@ -529,6 +636,23 @@ class ReweDiscountsCardEditor extends HTMLElement {
             }
         ];
     }
+
+      _getCategories() {
+        if (!this._hass || !this._config) return [];
+
+        const entity = this._hass.states[this._config.entity];
+        if (!entity) return [];
+
+        const offers =
+          entity.attributes.discounts ||
+          entity.attributes.offers ||
+          entity.attributes.items ||
+          entity.attributes.data ||
+          [];
+        return [...new Set(
+          offers.map((item) => item.category || item.category_name || 'Weitere Angebote')
+        )].sort();
+      }
 }
 
 customElements.define('ha-rewe-discounts-card', ReweDiscountsCard);
