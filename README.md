@@ -13,7 +13,7 @@ Requires one of the following integrations to be installed and configured:
 
 If you have [HACS](https://hacs.xyz/), you can install this card by adding this repository to the custom repositories in the HACS settings.
 
-1. Add `https://github.com/schblondie/ha-rewe-discounts-card` as a custom repository in HACS.
+1. Add `https://github.com/schblondie/discounts-card` as a custom repository in HACS.
 
 2. Install the `Discounts Card` from the HACS store.
 
