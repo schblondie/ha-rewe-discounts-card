@@ -463,6 +463,7 @@ class ReweDiscountsCard extends HTMLElement {
 
     contentContainer.innerHTML = Object.entries(grouped)
       .map(([category, items]) => {
+        const hasActiveSearch = this._filterQuery.length > 0;
         const safeCategory = this._escapeHtml(category);
         const categoryHtml = `
           <div class="offers-list">
@@ -534,7 +535,9 @@ class ReweDiscountsCard extends HTMLElement {
         `;
 
         if (this.config.collapsible_categories) {
-          const isOpen = this._categoryOpenState[category] ?? this.config.categories_open_by_default;
+          const isOpen = hasActiveSearch
+            ? true
+            : this._categoryOpenState[category] ?? this.config.categories_open_by_default;
           return `
             <details class="category-group" data-category="${encodeURIComponent(category)}" ${isOpen ? 'open' : ''}>
               <summary>
