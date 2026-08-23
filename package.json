@@ -1,7 +1,7 @@
 {
   "name": "discounts-card",
   "version": "3.0.0",
-  "description": "A card to display the discounts from the REWE or Edeka sensor and add them to the shopping list.",
+  "description": "A card to display the discounts from a supermarket sensor and add them to the shopping list.",
   "main": "card.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
