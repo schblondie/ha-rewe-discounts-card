@@ -1,9 +1,13 @@
 # discounts-card
-A card to display the discounts from the REWE or Edeka sensor with the ability to add them to the shopping list.
+A card to display the discounts from a supermarket sensor with the ability to add them to the shopping list.
 
 ## Requirements
 
-Requires the [REWE Discounts Integration](https://github.com/FaserF/ha-rewe) and/or [Edeka Discounts Integration](https://github.com/FaserF/ha-edeka) to be installed and configured.
+Requires the one of the following integrations to be installed and configured:
+[REWE Discounts Integration](https://github.com/FaserF/ha-rewe)
+[Edeka Discounts Integration](https://github.com/FaserF/ha-edeka)
+[Lidl Discounts Integration](https://github.com/FaserF/ha-lidl)
+[Aldi Discounts Integration](https://github.com/FaserF/ha-aldi)
 
 ## Installation
 
@@ -24,7 +28,7 @@ This card shows as addable card in the Lovelace configuration.
 | Name            | Type    | Requirement  | Default | Description                                                                                                                                                                       |
 | --------------- | ------- | ------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `type`          | string  | **Required** |         | `custom:discounts-card`                                                                                                                                                           |
-| `entity`        | string  | **Required** |         | Discount sensor (`sensor.rewe_` or `sensor.edeka_`)                                                                                                                                             ||
+| `entity`        | string  | **Required** |         | Discount sensor                                                                                                                                           ||
 | `show_images`                  | boolean | **Optional** | `true`  | Show product images or text placeholders when `picture_link` is missing                                                                                                           |
 | `enable_search`                | boolean | **Optional** | `true`  | Show the live search bar                                                                                                                                                           |
 | `collapsible_categories`       | boolean | **Optional** | `true`  | Allow categories to be collapsed                                                                                                                                                  |
