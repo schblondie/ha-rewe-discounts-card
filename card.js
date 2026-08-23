@@ -1,9 +1,9 @@
 /**
- * REWE Discounts Card for Home Assistant Lovelace
+ * Discounts Card for Home Assistant Lovelace
  * Repository: schblondie/ha-rewe-discounts-card
  */
 
-class ReweDiscountsCard extends HTMLElement {
+class DiscountsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -14,16 +14,26 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   static async getConfigElement() {
-    return document.createElement('ha-rewe-discounts-card-editor');
+    return document.createElement('discounts-card-editor');
   }
 
   static getStubConfig(hass, entities) {
-    const reweEntity = entities.find(
-      (e) => e.startsWith('sensor.rewe') || e.includes('rewe')
-    );
+    const supermarketEntity = entities?.find(
+      (e) =>
+        e.startsWith('sensor.rewe') ||
+        e.includes('rewe') ||
+        e.startsWith('sensor.edeka') ||
+        e.includes('edeka') ||
+        e.includes('discount') ||
+        e.includes('offer')
+    ) || '';
+
+    const isEdeka = supermarketEntity.toLowerCase().includes('edeka');
+    const defaultTitle = isEdeka ? 'EDEKA Angebote' : supermarketEntity ? 'REWE Angebote' : 'Angebote';
+
     return {
-      entity: reweEntity || '',
-      title: 'REWE Angebote',
+      entity: supermarketEntity,
+      title: defaultTitle,
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
@@ -32,18 +42,22 @@ class ReweDiscountsCard extends HTMLElement {
       category_filter_categories: [],
       enable_todo: false,
       todo_entity: '',
+      logo: true,
       rewe_logo: true,
       price: false
     };
   }
 
   setConfig(config) {
-    if (!config.entity) {
-      throw new Error('Please define a REWE entity in the card configuration.');
-    }
     const showConfig = config.show || {};
+    const logoSetting =
+      config.logo ??
+      config.rewe_logo ??
+      showConfig.logo ??
+      showConfig.rewe_logo ??
+      true;
+
     this.config = {
-      title: 'REWE Angebote',
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
@@ -52,12 +66,24 @@ class ReweDiscountsCard extends HTMLElement {
       category_filter_categories: [],
       enable_todo: false,
       todo_entity: '',
-      rewe_logo: showConfig.rewe_logo ?? true,
+      logo: logoSetting,
+      rewe_logo: logoSetting,
       price: showConfig.price ?? false,
       ...config
     };
 
+    if (this.config.logo === undefined && this.config.rewe_logo !== undefined) {
+      this.config.logo = this.config.rewe_logo;
+    }
+    if (this.config.rewe_logo === undefined && this.config.logo !== undefined) {
+      this.config.rewe_logo = this.config.logo;
+    }
+    if (showConfig.logo !== undefined && config.logo === undefined) {
+      this.config.logo = showConfig.logo;
+      this.config.rewe_logo = showConfig.logo;
+    }
     if (showConfig.rewe_logo !== undefined && config.rewe_logo === undefined) {
+      this.config.logo = showConfig.rewe_logo;
       this.config.rewe_logo = showConfig.rewe_logo;
     }
     if (showConfig.price !== undefined && config.price === undefined) {
@@ -71,11 +97,10 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const oldEntity = this._hass?.states[this.config?.entity];
-    const newEntity = hass.states[this.config?.entity];
+    const oldEntity = this.config?.entity ? this._hass?.states[this.config.entity] : null;
+    const newEntity = this.config?.entity ? hass.states[this.config.entity] : null;
     this._hass = hass;
 
-    // Avoid unnecessary re-renders if the entity state hasn't changed
     if (this._hasSkeleton && oldEntity === newEntity) {
       return;
     }
@@ -105,12 +130,25 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   _formatTodoItemName(itemName, itemPrice) {
-    const suffix = this.config.rewe_logo !== false ? ' (Rewe)' : '';
+    const storeLabel = this._detectStoreLabel();
+    const suffix = this.config.logo !== false && storeLabel ? ` (${storeLabel})` : '';
     const baseName = `${itemName}${suffix}`;
     if (!this.config.price || !itemPrice) {
       return baseName;
     }
     return `${baseName} - ${itemPrice}`;
+  }
+
+  _detectStoreLabel() {
+    const entityId = (this.config?.entity || '').toLowerCase();
+    const friendlyName = (
+      this._hass?.states?.[this.config?.entity]?.attributes?.friendly_name || ''
+    ).toLowerCase();
+    const source = `${entityId} ${friendlyName}`;
+
+    if (source.includes('edeka')) return 'EDEKA';
+    if (source.includes('rewe')) return 'REWE';
+    return '';
   }
 
   _onSearchInput(e) {
@@ -122,8 +160,6 @@ class ReweDiscountsCard extends HTMLElement {
       this._searchRestoreCategoryState = { ...this._categoryOpenState };
     }
 
-    // As soon as the search is empty, always restore the pre-search category state.
-    // This also recovers from edge-cases where the transition event may have been missed.
     if (!hasActiveSearch && this._searchRestoreCategoryState) {
       this._categoryOpenState = this._searchRestoreCategoryState
         ? { ...this._searchRestoreCategoryState }
@@ -167,12 +203,24 @@ class ReweDiscountsCard extends HTMLElement {
   render() {
     if (!this._hass || !this.config) return;
 
+    if (!this.config.entity) {
+      this._hasSkeleton = false;
+      this.shadowRoot.innerHTML = `
+        <ha-card style="padding: 16px;">
+          <div style="color: var(--secondary-text-color);">
+            Please select an entity in the card configuration editor.
+          </div>
+        </ha-card>
+      `;
+      return;
+    }
+
     const entity = this._hass.states[this.config.entity];
     if (!entity) {
       this._hasSkeleton = false;
       this.shadowRoot.innerHTML = `
-        <ha-card>
-          <div class="card-content error" style="padding: 16px; color: var(--error-color, #db4437);">
+        <ha-card style="padding: 16px;">
+          <div class="card-content error" style="color: var(--error-color, #db4437);">
             Entity not found: <code>${this._escapeHtml(this.config.entity)}</code>
           </div>
         </ha-card>
@@ -189,8 +237,13 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   _renderSkeleton(entity) {
+    const storeLabel = this._detectStoreLabel();
+    const fallbackTitle = storeLabel ? `${storeLabel} Angebote` : 'Angebote';
     const cardTitle =
-      this.config.title || entity.attributes.friendly_name || 'REWE Angebote';
+      (this.config.title && this.config.title.trim() !== '')
+        ? this.config.title
+        : (entity.attributes?.friendly_name || fallbackTitle);
+
     const safeCardTitle = this._escapeHtml(cardTitle);
 
     this.shadowRoot.innerHTML = `
@@ -425,7 +478,7 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   _updateOffersList() {
-    const entity = this._hass.states[this.config.entity];
+    const entity = this._hass?.states[this.config.entity];
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     const headerBadge = this.shadowRoot.querySelector('.header-badge');
     if (!entity || !contentContainer) return;
@@ -606,7 +659,7 @@ class ReweDiscountsCard extends HTMLElement {
   }
 }
 
-class ReweDiscountsCardEditor extends HTMLElement {
+class DiscountsCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = config;
     this.render();
@@ -673,8 +726,8 @@ class ReweDiscountsCardEditor extends HTMLElement {
 
     this._form.computeLabel = (schema) => {
       const labels = {
-        entity: 'REWE Entity',
-        title: 'Card Title',
+        entity: 'Supermarket Entity',
+        title: 'Card Title (Optional)',
         show_images: 'Show Product Images',
         enable_search: 'Enable Live Search Bar',
         collapsible_categories: 'Collapsible Category Accordions',
@@ -684,7 +737,7 @@ class ReweDiscountsCardEditor extends HTMLElement {
         category_filter_categories_text: 'Filtered Categories (Comma-separated)',
         enable_todo: 'Enable Add-to-List Button',
         todo_entity: 'Target Todo Entity (Optional)',
-        rewe_logo: 'Append (Rewe) in list item',
+        logo: 'Append supermarket name in list item',
         price: 'Append price in list item'
       };
       return labels[schema.name] || schema.name;
@@ -693,7 +746,7 @@ class ReweDiscountsCardEditor extends HTMLElement {
     this._form.schema = [
       {
         name: 'entity',
-        label: 'REWE Entity',
+        label: 'Supermarket Entity',
         required: true,
         selector: {
           entity: {
@@ -703,7 +756,7 @@ class ReweDiscountsCardEditor extends HTMLElement {
       },
       {
         name: 'title',
-        label: 'Card Title',
+        label: 'Card Title (Optional)',
         selector: { text: {} }
       },
       {
@@ -765,8 +818,8 @@ class ReweDiscountsCardEditor extends HTMLElement {
             selector: { boolean: {} }
           },
           {
-            name: 'rewe_logo',
-            label: 'Append (Rewe) in list item',
+            name: 'logo',
+            label: 'Append supermarket name in list item',
             selector: { boolean: {} }
           },
           {
@@ -790,10 +843,10 @@ class ReweDiscountsCardEditor extends HTMLElement {
   }
 
   _getCategories() {
-    if (!this._hass || !this._config) return [];
+    if (!this._hass || !this._config || !this._config.entity) return [];
 
     const entity = this._hass.states[this._config.entity];
-    if (!entity) return [];
+    if (!entity || !entity.attributes) return [];
 
     const offers =
       entity.attributes.discounts ||
@@ -801,20 +854,28 @@ class ReweDiscountsCardEditor extends HTMLElement {
       entity.attributes.items ||
       entity.attributes.data ||
       [];
-    return [...new Set(
-      offers.map((item) => item.category || item.category_name || 'Weitere Angebote')
-    )].sort();
+
+    const categories = [
+      ...new Set(
+        offers.map((item) => item.category || item.category_name || 'Weitere Angebote')
+      )
+    ].sort();
+
+    return categories.map((cat) => ({ value: cat, label: cat }));
   }
 }
 
-customElements.define('ha-rewe-discounts-card', ReweDiscountsCard);
-customElements.define('ha-rewe-discounts-card-editor', ReweDiscountsCardEditor);
-customElements.define('discounts-card', ReweDiscountsCard);
+if (!customElements.get('discounts-card-editor')) {
+  customElements.define('discounts-card-editor', DiscountsCardEditor);
+}
+if (!customElements.get('discounts-card')) {
+  customElements.define('discounts-card', DiscountsCard);
+}
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: 'ha-rewe-discounts-card',
-  name: 'REWE Discounts Card',
+  type: 'discounts-card',
+  name: 'Discounts Card',
   description:
-    'A custom Lovelace card for browsing weekly REWE discounts with search, image handling, and shopping list integration.'
+    'A custom Lovelace card for browsing weekly REWE or Edeka discounts with search, image handling, and shopping list integration.'
 });
