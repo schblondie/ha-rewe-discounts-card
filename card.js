@@ -122,11 +122,15 @@ class ReweDiscountsCard extends HTMLElement {
       this._searchRestoreCategoryState = { ...this._categoryOpenState };
     }
 
-    if (hadActiveSearch && !hasActiveSearch) {
+    // As soon as the search is empty, always restore the pre-search category state.
+    // This also recovers from edge-cases where the transition event may have been missed.
+    if (!hasActiveSearch && this._searchRestoreCategoryState) {
       this._categoryOpenState = this._searchRestoreCategoryState
         ? { ...this._searchRestoreCategoryState }
         : {};
       this._searchRestoreCategoryState = null;
+    } else if (hadActiveSearch && !hasActiveSearch) {
+      this._categoryOpenState = {};
     }
 
     this._filterQuery = nextFilterQuery;
