@@ -3,7 +3,7 @@ A card to display the discounts from a supermarket sensor with the ability to ad
 
 ## Requirements
 
-Requires the one of the following integrations to be installed and configured:
+Requires one of the following integrations to be installed and configured:
 - [REWE Discounts Integration](https://github.com/FaserF/ha-rewe)
 - [Edeka Discounts Integration](https://github.com/FaserF/ha-edeka)
 - [Lidl Discounts Integration](https://github.com/FaserF/ha-lidl)
