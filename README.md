@@ -64,3 +64,11 @@ enable_todo: true
 todo_entity: todo.shopping_list
 
 ```
+### Issues and Feature Requests
+Found bug or want new feature? Open [issue](https://github.com/schblondie/discounts-card/issues) on GitHub Issues.
+
+### Support
+Card useful? Leave star on GitHub repository! ⭐
+
+### My other projects
+[Universal scheduler](https://github.com/schblondie/universal_scheduler) - Allows you to set custom curves for your entities/entity attributes.
