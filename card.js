@@ -9,6 +9,7 @@ class ReweDiscountsCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._filterQuery = '';
     this._categoryOpenState = {};
+    this._searchRestoreCategoryState = null;
     this._hasSkeleton = false;
   }
 
@@ -113,7 +114,22 @@ class ReweDiscountsCard extends HTMLElement {
   }
 
   _onSearchInput(e) {
-    this._filterQuery = e.target.value.toLowerCase().trim();
+    const nextFilterQuery = e.target.value.toLowerCase().trim();
+    const hadActiveSearch = this._filterQuery.length > 0;
+    const hasActiveSearch = nextFilterQuery.length > 0;
+
+    if (!hadActiveSearch && hasActiveSearch) {
+      this._searchRestoreCategoryState = { ...this._categoryOpenState };
+    }
+
+    if (hadActiveSearch && !hasActiveSearch) {
+      this._categoryOpenState = this._searchRestoreCategoryState
+        ? { ...this._searchRestoreCategoryState }
+        : {};
+      this._searchRestoreCategoryState = null;
+    }
+
+    this._filterQuery = nextFilterQuery;
     this._updateOffersList();
   }
 
@@ -409,6 +425,7 @@ class ReweDiscountsCard extends HTMLElement {
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     const headerBadge = this.shadowRoot.querySelector('.header-badge');
     if (!entity || !contentContainer) return;
+    const hasActiveSearch = this._filterQuery.length > 0;
 
     const rawOffers =
       entity.attributes.discounts ||
@@ -463,7 +480,6 @@ class ReweDiscountsCard extends HTMLElement {
 
     contentContainer.innerHTML = Object.entries(grouped)
       .map(([category, items]) => {
-        const hasActiveSearch = this._filterQuery.length > 0;
         const safeCategory = this._escapeHtml(category);
         const categoryHtml = `
           <div class="offers-list">
@@ -561,6 +577,9 @@ class ReweDiscountsCard extends HTMLElement {
     if (this.config.collapsible_categories) {
       contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
         categoryGroup.addEventListener('toggle', () => {
+          if (hasActiveSearch) {
+            return;
+          }
           const category = decodeURIComponent(categoryGroup.dataset.category);
           this._categoryOpenState[category] = categoryGroup.open;
         });
