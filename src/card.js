@@ -37,8 +37,8 @@ class DiscountsCard extends HTMLElement {
     this._menuOpen = false;
     this._customInputVisibility = {};
     this._customInputValues = {};
-    this._focusedCustomInputStore = null;
     this._customInputSelections = {};
+    this._focusedCustomInputStore = null;
 
     this._onDocClick = (e) => {
       if (!this._menuOpen) return;
@@ -197,13 +197,39 @@ class DiscountsCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const oldHass = this._hass;
     this._hass = hass;
+
     if (!this._hasSkeleton) {
       this.render();
-    } else {
+      return;
+    }
+
+    if (!oldHass) {
       this._fetchTodoCounts().then(() => {
         this._updateHeaderTitle();
         this._updateOffersList();
+      });
+      return;
+    }
+
+    const todoEntity = this.config?.todo?.todo_entity;
+    const storeEntities = (this.config?.entities || []).map((e) => e.entity);
+
+    const offersChanged = storeEntities.some(
+      (id) => oldHass.states[id] !== hass.states[id]
+    );
+
+    const todoChanged = todoEntity && oldHass.states[todoEntity] !== hass.states[todoEntity];
+
+    if (offersChanged) {
+      this._fetchTodoCounts().then(() => {
+        this._updateHeaderTitle();
+        this._updateOffersList();
+      });
+    } else if (todoChanged) {
+      this._fetchTodoCounts().then(() => {
+        this._patchTodoElementsOnly();
       });
     }
   }
@@ -412,9 +438,32 @@ class DiscountsCard extends HTMLElement {
       }
 
       await this._fetchTodoCounts();
-      this._updateOffersList();
+      this._patchTodoElementsOnly();
     } catch (err) {
       console.error('Failed to update shopping list:', err);
+    }
+  }
+
+  _patchTodoElementsOnly() {
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    this._updateHeaderAndCategoryBadges();
+
+    root.querySelectorAll('.offer-item').forEach((el) => {
+      const todoContainer = el.querySelector('.todo-btn-container');
+      if (!todoContainer) return;
+
+      const name = decodeURIComponent(todoContainer.dataset.item || '');
+      const price = decodeURIComponent(todoContainer.dataset.price || '');
+      const entityId = decodeURIComponent(todoContainer.dataset.entity || '');
+
+      const count = this._getItemTodoCount({ product: name, price: price }, entityId);
+      todoContainer.innerHTML = this._renderTodoControlsHtml(name, price, count, entityId);
+    });
+
+    if (this._filterTodoOnly) {
+      this._updateOffersList();
     }
   }
 
@@ -757,7 +806,7 @@ class DiscountsCard extends HTMLElement {
           }
           return;
         }
-        this._focusedCustomInputStore = null;
+
         if (confirmCustomBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(confirmCustomBtn.dataset.store || '');
@@ -1261,7 +1310,19 @@ class DiscountsCard extends HTMLElement {
         }, 0);
       }
     }
+
+    if (this.config.collapsible_categories) {
+      contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
+        categoryGroup.addEventListener('toggle', () => {
+          if (this._filterQuery.length > 0 || this._filterTodoOnly) return;
+          const category = decodeURIComponent(categoryGroup.dataset.category);
+          const store = decodeURIComponent(categoryGroup.dataset.store || '');
+          this._categoryOpenState[`${store}_${category}`] = categoryGroup.open;
+        });
+      });
+    }
   }
+
   _updateHeaderAndCategoryBadges() {
     let rawOffers = [];
     this.config.entities.forEach((s, idx) => {
