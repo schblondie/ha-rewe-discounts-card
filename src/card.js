@@ -8,6 +8,7 @@ import de from '../translations/de.json';
 import cardStyles from '../styles/card.css';
 
 const languages = { en, de };
+const brokenImageUrls = new Set();
 
 function localize(key, hass) {
   const lang = hass?.locale?.language || hass?.language || 'en';
@@ -27,17 +28,39 @@ class DiscountsCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._filterQuery = '';
+    this._filterTodoOnly = false;
     this._categoryOpenState = {};
-    this._searchRestoreCategoryState = null;
     this._hasSkeleton = false;
+    this._todoItemCounts = {};
+    this._customStoreTodoItems = {};
+    this._selectedStoreIndices = new Set([0]);
+    this._menuOpen = false;
+
+    this._onDocClick = (e) => {
+      if (!this._menuOpen) return;
+      const path = e.composedPath();
+      const container = this.shadowRoot?.querySelector('.burger-menu-container');
+      if (container && !path.includes(container)) {
+        this._menuOpen = false;
+        this._renderDropdownMenu();
+      }
+    };
   }
+
+  connectedCallback() {
+    document.addEventListener('click', this._onDocClick);
+  }
+
+  disconnectedCallback() {
+    document.removeEventListener('click', this._onDocClick);
+  } s
 
   static async getConfigElement() {
     return document.createElement('discounts-card-editor');
   }
 
   static getStubConfig(hass, entities) {
-    const supermarketEntity = entities?.find(
+    const supermarketEntities = entities?.filter(
       (e) =>
         e.startsWith('sensor.rewe') ||
         e.includes('rewe') ||
@@ -51,55 +74,120 @@ class DiscountsCard extends HTMLElement {
         e.includes('norma') ||
         e.includes('discount') ||
         e.includes('offer')
-    ) || '';
+    ) || [];
 
-    const entLower = supermarketEntity.toLowerCase();
-    let defaultTitle = localize('default.title', hass);
-
-    if (entLower.includes('rewe')) defaultTitle = localize('rewe.title', hass);
-    else if (entLower.includes('edeka')) defaultTitle = localize('edeka.title', hass);
-    else if (entLower.includes('lidl')) defaultTitle = localize('lidl.title', hass);
-    else if (entLower.includes('aldi')) defaultTitle = localize('aldi.title', hass);
-    else if (entLower.includes('norma')) defaultTitle = localize('norma.title', hass);
+    const selectedEntities = supermarketEntities.slice(0, 3).map((ent) => ({
+      entity: ent,
+      title: '',
+      default_selected: true
+    }));
 
     return {
-      entity: supermarketEntity,
-      title: defaultTitle,
+      title: '',
+      entities: selectedEntities.length > 0 ? selectedEntities : [{ entity: '', title: '', default_selected: true }],
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
       categories_open_by_default: true,
-      filter_mode: 'none',
-      filter_categories: [],
-      enable_todo: false,
-      todo_entity: '',
-      logo: true,
-      price: false
+      filter: {
+        filter_mode: 'none',
+        filter_categories: []
+      },
+      todo: {
+        todo_enabled: false,
+        todo_entity: '',
+        todo_price: false,
+        only_show_todo: false,
+        category_layout: 'keep'
+      }
     };
   }
 
   setConfig(config) {
     const showConfig = config.show || {};
-    const logoSetting =
-      config.logo ??
-      config.rewe_logo ??
-      showConfig.logo ??
-      showConfig.rewe_logo ??
-      true;
+    const filterConfig = config.filter || {};
+    const todoConfig = config.todo || {};
+
+    let normalizedEntities = [];
+    if (Array.isArray(config.entities)) {
+      normalizedEntities = config.entities.map((item) => {
+        if (typeof item === 'string') return { entity: item, title: '', default_selected: true };
+        return {
+          entity: item.entity || '',
+          title: item.title || '',
+          default_selected: item.default_selected !== false
+        };
+      });
+    } else if (config.entity) {
+      normalizedEntities = [
+        {
+          entity: config.entity,
+          title: config.title || '',
+          default_selected: true
+        }
+      ];
+    }
+
+    const priceSetting =
+      todoConfig.todo_price ??
+      config.todo_price ??
+      config.price ??
+      showConfig.price ??
+      false;
 
     this.config = {
+      title: config.title || '',
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
       categories_open_by_default: true,
-      filter_mode: 'none',
-      filter_categories: [],
-      enable_todo: false,
-      todo_entity: '',
-      logo: logoSetting,
-      price: config.price ?? showConfig.price ?? false,
-      ...config
+      ...config,
+      entities: normalizedEntities,
+      filter: {
+        filter_mode:
+          filterConfig.filter_mode ??
+          config.category_filter_mode ??
+          config.filter_mode ??
+          'none',
+        filter_categories:
+          filterConfig.filter_categories ??
+          config.category_filter_categories ??
+          config.filter_categories ??
+          []
+      },
+      todo: {
+        todo_enabled:
+          todoConfig.todo_enabled ??
+          config.enable_todo ??
+          config.todo_enabled ??
+          false,
+        todo_entity:
+          todoConfig.todo_entity ??
+          config.todo_entity ??
+          '',
+        todo_price: priceSetting,
+        only_show_todo:
+          todoConfig.only_show_todo ??
+          config.only_show_todo ??
+          false,
+        category_layout:
+          todoConfig.category_layout ??
+          config.todo_category_layout ??
+          'keep'
+      }
     };
+
+    const preselected = [];
+    this.config.entities.forEach((s, idx) => {
+      if (s.default_selected !== false) {
+        preselected.push(idx);
+      }
+    });
+    this._selectedStoreIndices = new Set(preselected.length > 0 ? preselected : [0]);
+
+    if (this._filterTodoOnly === false && this.config.todo?.only_show_todo) {
+      this._filterTodoOnly = true;
+    }
 
     this._hasSkeleton = false;
     if (this._hass) {
@@ -108,54 +196,29 @@ class DiscountsCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const oldEntity = this.config?.entity ? this._hass?.states[this.config.entity] : null;
-    const newEntity = this.config?.entity ? hass.states[this.config.entity] : null;
     this._hass = hass;
-
-    if (this._hasSkeleton && oldEntity === newEntity) {
-      return;
-    }
-    this.render();
-  }
-
-  _addItemToTodo(e, itemName, itemPrice = '') {
-    e.stopPropagation();
-    if (!this._hass) return;
-
-    const formattedItemName = this._formatTodoItemName(itemName, itemPrice);
-
-    if (this.config.todo_entity) {
-      this._hass.callService('todo', 'add_item', {
-        entity_id: this.config.todo_entity,
-        item: formattedItemName
-      });
+    if (!this._hasSkeleton) {
+      this.render();
     } else {
-      this._hass.callService('shopping_list', 'add_item', {
-        name: formattedItemName
+      this._fetchTodoCounts().then(() => {
+        this._updateHeaderTitle();
+        this._updateOffersList();
       });
     }
-
-    const btn = e.currentTarget;
-    btn.classList.add('added');
-    setTimeout(() => btn.classList.remove('added'), 1200);
   }
 
-  _formatTodoItemName(itemName, itemPrice) {
-    const storeLabel = this._detectStoreLabel();
-    const suffix = this.config.logo !== false && storeLabel ? ` (${storeLabel})` : '';
-    const baseName = `${itemName}${suffix}`;
-    if (!this.config.price || !itemPrice) {
-      return baseName;
-    }
-    return `${baseName} - ${itemPrice}`;
+  _parseMultiplier(str) {
+    if (!str) return { count: 1, base: '' };
+    const match = String(str).match(/^(\d+)x\s*(.+)$/i);
+    return match
+      ? { count: parseInt(match[1], 10), base: match[2].trim() }
+      : { count: 1, base: String(str).trim() };
   }
 
-  _detectStoreLabel() {
-    const entityId = (this.config?.entity || '').toLowerCase();
-    const friendlyName = (
-      this._hass?.states?.[this.config?.entity]?.attributes?.friendly_name || ''
-    ).toLowerCase();
-    const source = `${entityId} ${friendlyName}`;
+  _detectStoreLabel(entityId = '') {
+    const ent = (entityId || '').toLowerCase();
+    const friendlyName = (this._hass?.states?.[entityId]?.attributes?.friendly_name || '').toLowerCase();
+    const source = `${ent} ${friendlyName}`;
 
     if (source.includes('aldi')) return 'ALDI';
     if (source.includes('edeka')) return 'EDEKA';
@@ -165,24 +228,283 @@ class DiscountsCard extends HTMLElement {
     return '';
   }
 
-  _onSearchInput(e) {
-    const nextFilterQuery = e.target.value.toLowerCase().trim();
-    const hadActiveSearch = this._filterQuery.length > 0;
-    const hasActiveSearch = nextFilterQuery.length > 0;
+  _formatTodoItemName(itemName, itemPrice, entityId = '') {
+    const storeLabel = this._detectStoreLabel(entityId);
+    const suffix = storeLabel ? ` (${storeLabel})` : '';
+    const baseName = `${itemName}${suffix}`;
+    if (!this.config.todo?.todo_price || !itemPrice) {
+      return baseName;
+    }
+    return `${baseName} - ${itemPrice}`;
+  }
 
-    if (!hadActiveSearch && hasActiveSearch) {
-      this._searchRestoreCategoryState = { ...this._categoryOpenState };
+  _getItemTodoCount(item, entityId) {
+    if (!this.config.todo?.todo_enabled) return 0;
+    const { name, price } = this._getItemProps(item);
+    const displayPrice = formatPrice(price);
+    const formattedName = this._formatTodoItemName(name, displayPrice, entityId || item._storeEntity);
+    const targetKey = this._parseMultiplier(formattedName).base.toLowerCase();
+    return this._todoItemCounts[targetKey] || 0;
+  }
+
+  async _fetchTodoCounts() {
+    if (!this._hass || !this.config?.todo?.todo_enabled) {
+      this._todoItemCounts = {};
+      this._customStoreTodoItems = {};
+      return;
     }
 
-    if (!hasActiveSearch && this._searchRestoreCategoryState) {
-      this._categoryOpenState = { ...this._searchRestoreCategoryState };
-      this._searchRestoreCategoryState = null;
-    } else if (hadActiveSearch && !hasActiveSearch) {
-      this._categoryOpenState = {};
+    const todoEntity = this.config.todo.todo_entity;
+    const counts = {};
+    const rawList = [];
+
+    try {
+      if (todoEntity) {
+        const res = await this._hass.callWS({
+          type: 'todo/item/list',
+          entity_id: todoEntity
+        });
+        (res?.items || []).forEach((item) => {
+          if (item.status !== 'completed') {
+            const { count, base } = this._parseMultiplier(item.summary);
+            const key = base.toLowerCase();
+            counts[key] = (counts[key] || 0) + count;
+            rawList.push({ summary: item.summary, uid: item.uid, count, base });
+          }
+        });
+      } else {
+        const items = (await this._hass.callWS({ type: 'shopping_list/items' })) || [];
+        items.forEach((item) => {
+          if (!item.complete) {
+            const { count, base } = this._parseMultiplier(item.name);
+            const key = base.toLowerCase();
+            counts[key] = (counts[key] || 0) + count;
+            rawList.push({ summary: item.name, id: item.id, count, base });
+          }
+        });
+      }
+
+      this._todoItemCounts = counts;
+
+      const customItems = {};
+      this.config.entities.forEach((s) => {
+        customItems[s.entity] = [];
+        const label = this._detectStoreLabel(s.entity).toLowerCase();
+        const sensorOffers = this._getRawOffersForEntity(s.entity);
+        const sensorNames = new Set(
+          sensorOffers.map((o) => {
+            const { name, price } = this._getItemProps(o);
+            const fmt = this._formatTodoItemName(name, formatPrice(price), s.entity);
+            return this._parseMultiplier(fmt).base.toLowerCase();
+          })
+        );
+
+        rawList.forEach((todo) => {
+          const baseLower = todo.base.toLowerCase();
+          const matchesStore = label ? baseLower.includes(`(${label})`) : false;
+          if ((matchesStore || this.config.entities.length === 1) && !sensorNames.has(baseLower)) {
+            let cleanName = todo.base;
+            if (label) cleanName = cleanName.replace(new RegExp(`\\s*\\(${label}\\)`, 'i'), '').trim();
+            customItems[s.entity].push({
+              title: cleanName,
+              category: localize('default.custom_items', this._hass),
+              price: '',
+              _storeEntity: s.entity,
+              _isCustom: true
+            });
+          }
+        });
+      });
+
+      this._customStoreTodoItems = customItems;
+    } catch {
+      this._todoItemCounts = {};
+      this._customStoreTodoItems = {};
+    }
+  }
+
+  async _updateTodoQuantity(itemName, itemPrice = '', mode = 'inc', customCount = null, entityId = '') {
+    if (!this._hass) return;
+
+    const formattedItemName = this._formatTodoItemName(itemName, itemPrice, entityId);
+    const todoEntity = this.config.todo?.todo_entity;
+    const target = this._parseMultiplier(formattedItemName);
+
+    try {
+      if (todoEntity) {
+        const res = await this._hass.callWS({
+          type: 'todo/item/list',
+          entity_id: todoEntity
+        });
+        const items = res?.items || [];
+        const existing = items.find(
+          (i) =>
+            i.status !== 'completed' &&
+            this._parseMultiplier(i.summary).base.toLowerCase() === target.base.toLowerCase()
+        );
+
+        if (existing) {
+          const current = this._parseMultiplier(existing.summary);
+          let nextCount = current.count;
+
+          if (mode === 'inc') nextCount += 1;
+          else if (mode === 'dec') nextCount -= 1;
+          else if (mode === 'set') nextCount = customCount;
+
+          if (nextCount <= 0) {
+            await this._hass.callService('todo', 'remove_item', {
+              entity_id: todoEntity,
+              item: [existing.uid]
+            });
+          } else {
+            const newSummary = nextCount > 1 ? `${nextCount}x ${current.base}` : current.base;
+            await this._hass.callService('todo', 'update_item', {
+              entity_id: todoEntity,
+              item: existing.uid,
+              rename: newSummary
+            });
+          }
+        } else if (mode === 'inc' || (mode === 'set' && customCount > 0)) {
+          const count = mode === 'set' ? customCount : 1;
+          const initialName = count > 1 ? `${count}x ${target.base}` : target.base;
+          await this._hass.callService('todo', 'add_item', {
+            entity_id: todoEntity,
+            item: initialName
+          });
+        }
+      } else {
+        const items = (await this._hass.callWS({ type: 'shopping_list/items' })) || [];
+        const existing = items.find(
+          (i) =>
+            !i.complete &&
+            this._parseMultiplier(i.name).base.toLowerCase() === target.base.toLowerCase()
+        );
+
+        if (existing) {
+          const current = this._parseMultiplier(existing.name);
+          let nextCount = current.count;
+
+          if (mode === 'inc') nextCount += 1;
+          else if (mode === 'dec') nextCount -= 1;
+          else if (mode === 'set') nextCount = customCount;
+
+          if (nextCount <= 0) {
+            await this._hass.callWS({
+              type: 'shopping_list/remove_item',
+              item_id: existing.id
+            });
+          } else {
+            const newName = nextCount > 1 ? `${nextCount}x ${current.base}` : current.base;
+            await this._hass.callWS({
+              type: 'shopping_list/update_item',
+              item_id: existing.id,
+              name: newName
+            });
+          }
+        } else if (mode === 'inc' || (mode === 'set' && customCount > 0)) {
+          const count = mode === 'set' ? customCount : 1;
+          const initialName = count > 1 ? `${count}x ${target.base}` : target.base;
+          await this._hass.callService('shopping_list', 'add_item', {
+            name: initialName
+          });
+        }
+      }
+
+      await this._fetchTodoCounts();
+      this._updateOffersList();
+    } catch (err) {
+      console.error('Failed to update shopping list:', err);
+    }
+  }
+
+  async _clearStoreTodoItems(storeEntity) {
+    if (!this._hass || !this.config.todo?.todo_enabled) return;
+
+    const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
+    const storeTitle = this._getStoreTitle(storeConf);
+    let confirmMessage = localize('default.remove_all_from_shopping_list', this._hass);
+    confirmMessage = confirmMessage.replace("{storeTitle}", `"${storeTitle}"`);
+    if (!window.confirm(confirmMessage)) return;
+
+    const storeOffers = this._getRawOffersForEntity(storeEntity);
+    const customOffers = this._customStoreTodoItems?.[storeEntity] || [];
+    const allStoreOffers = [...storeOffers, ...customOffers];
+
+    const storeKeys = new Set(
+      allStoreOffers.map((item) => {
+        const { name, price } = this._getItemProps(item);
+        const displayPrice = formatPrice(price);
+        const formattedName = this._formatTodoItemName(name, displayPrice, storeEntity);
+        return this._parseMultiplier(formattedName).base.toLowerCase();
+      })
+    );
+
+    const todoEntity = this.config.todo?.todo_entity;
+
+    try {
+      if (todoEntity) {
+        const res = await this._hass.callWS({ type: 'todo/item/list', entity_id: todoEntity });
+        const items = res?.items || [];
+        const uidsToRemove = items
+          .filter((i) => i.status !== 'completed' && storeKeys.has(this._parseMultiplier(i.summary).base.toLowerCase()))
+          .map((i) => i.uid);
+
+        if (uidsToRemove.length > 0) {
+          await this._hass.callService('todo', 'remove_item', {
+            entity_id: todoEntity,
+            item: uidsToRemove
+          });
+        }
+      } else {
+        const items = (await this._hass.callWS({ type: 'shopping_list/items' })) || [];
+        const toRemove = items.filter(
+          (i) => !i.complete && storeKeys.has(this._parseMultiplier(i.name).base.toLowerCase())
+        );
+        for (const item of toRemove) {
+          await this._hass.callWS({ type: 'shopping_list/remove_item', item_id: item.id });
+        }
+      }
+
+      await this._fetchTodoCounts();
+      this._updateOffersList();
+    } catch (err) {
+      console.error('Failed to clear store shopping list items:', err);
+    }
+  }
+
+  _renderTodoControlsHtml(name, price, count, entityId = '') {
+    const safeItem = encodeURIComponent(name);
+    const safePrice = encodeURIComponent(price || '');
+    const safeEntity = encodeURIComponent(entityId || '');
+
+    if (count <= 0) {
+      return `
+        <button class="btn-todo-action btn-add-todo" title="${localize('default.add_to_shopping_list', this._hass)}" data-item="${safeItem}" data-price="${safePrice}" data-entity="${safeEntity}">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+          </svg>
+        </button>
+      `;
     }
 
-    this._filterQuery = nextFilterQuery;
-    this._updateOffersList();
+    return `
+      <button class="btn-todo-action btn-dec-todo" title="${count === 1 ? 'Remove' : 'Decrease'}" data-item="${safeItem}" data-price="${safePrice}" data-entity="${safeEntity}">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          ${count === 1
+        ? `<path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />`
+        : `<path d="M19,13H5V11H19V13Z" />`
+      }
+        </svg>
+      </button>
+      <button class="todo-count-badge" title="Menge ändern" data-item="${safeItem}" data-price="${safePrice}" data-count="${count}" data-entity="${safeEntity}">
+        ${count}x
+      </button>
+      <button class="btn-todo-action btn-add-todo" title="${localize('default.add_to_shopping_list', this._hass)}" data-item="${safeItem}" data-price="${safePrice}" data-entity="${safeEntity}">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+        </svg>
+      </button>
+    `;
   }
 
   _escapeHtml(value) {
@@ -211,28 +533,26 @@ class DiscountsCard extends HTMLElement {
     return '';
   }
 
-  render() {
+  _getStoreTitle(storeConf) {
+    if (!storeConf) return localize('default.title', this._hass);
+    if (storeConf.title && storeConf.title.trim() !== '') return storeConf.title;
+    const entState = this._hass?.states[storeConf.entity];
+    const storeLabel = this._detectStoreLabel(storeConf.entity);
+    return (
+      entState?.attributes?.friendly_name ||
+      (storeLabel ? `${storeLabel} ${localize('default.title', this._hass)}` : localize('default.title', this._hass))
+    );
+  }
+
+  async render() {
     if (!this._hass || !this.config) return;
 
-    if (!this.config.entity) {
+    if (!this.config.entities || this.config.entities.length === 0) {
       this._hasSkeleton = false;
       this.shadowRoot.innerHTML = `
         <ha-card style="padding: 16px;">
           <div style="color: var(--secondary-text-color);">
-            Please select an entity in the card configuration editor.
-          </div>
-        </ha-card>
-      `;
-      return;
-    }
-
-    const entity = this._hass.states[this.config.entity];
-    if (!entity) {
-      this._hasSkeleton = false;
-      this.shadowRoot.innerHTML = `
-        <ha-card style="padding: 16px;">
-          <div class="card-content error" style="color: var(--error-color, #db4437);">
-            Entity not found: <code>${this._escapeHtml(this.config.entity)}</code>
+            Please configure at least one entity.
           </div>
         </ha-card>
       `;
@@ -240,24 +560,17 @@ class DiscountsCard extends HTMLElement {
     }
 
     if (!this._hasSkeleton) {
-      this._renderSkeleton(entity);
+      this._renderSkeleton();
       this._hasSkeleton = true;
     }
 
+    await this._fetchTodoCounts();
+    this._updateHeaderTitle();
     this._updateOffersList();
   }
 
-  _renderSkeleton(entity) {
-    const storeLabel = this._detectStoreLabel();
-    const fallbackTitle = storeLabel
-      ? `${storeLabel} ${localize('default.title', this._hass)}`
-      : localize('default.title', this._hass);
-    const cardTitle =
-      this.config.title && this.config.title.trim() !== ''
-        ? this.config.title
-        : entity.attributes?.friendly_name || fallbackTitle;
-
-    const safeCardTitle = this._escapeHtml(cardTitle);
+  _renderSkeleton() {
+    const hasMultipleStores = (this.config.entities || []).length > 1;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -266,19 +579,56 @@ class DiscountsCard extends HTMLElement {
 
       <ha-card>
         <div class="card-header">
-          <span>${safeCardTitle}</span>
-          <span class="badge-count header-badge">0 ${localize('default.offers', this._hass)}</span>
+          <div class="header-left">
+            ${hasMultipleStores
+        ? `
+                  <div class="burger-menu-container">
+                    <button class="btn-burger-menu" title="${this._escapeHtml(localize('default.select_store', this._hass))}" aria-label="${this._escapeHtml(localize('default.select_store', this._hass))}">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
+                      </svg>
+                    </button>
+                    <div class="dropdown-menu"></div>
+                  </div>
+                `
+        : ''
+      }
+            <span class="card-title"></span>
+          </div>
+          <div class="header-badge-container">
+            <span class="badge-count header-badge">0 ${localize('default.offers', this._hass)}</span>
+          </div>
         </div>
 
-        ${this.config.enable_search
+        ${this.config.enable_search || this.config.todo?.todo_enabled
         ? `
               <div class="search-container">
-                <input
-                  type="text"
-                  class="search-input"
-                  placeholder="${this._escapeHtml(localize('default.search', this._hass))}"
-                  aria-label="${this._escapeHtml(localize('default.search', this._hass))}"
-                />
+                ${this.config.enable_search
+          ? `
+                      <div class="search-wrapper">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+                        </svg>
+                        <input
+                          type="text"
+                          class="search-input"
+                          placeholder="${this._escapeHtml(localize('default.search', this._hass))}"
+                          value="${this._escapeHtml(this._filterQuery)}"
+                        />
+                      </div>
+                    `
+          : '<div style="flex:1;"></div>'
+        }
+                ${this.config.todo?.todo_enabled
+          ? `
+                      <button class="btn-filter-todo ${this._filterTodoOnly ? 'active' : ''}" title="${this._escapeHtml(localize('default.change_to_todo', this._hass))}" aria-label="${this._escapeHtml(localize('default.filter_todo', this._hass))}">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M17,18C15.89,18 15,18.89 15,20A2,2 0 0,0 17,22A2,2 0 0,0 19,20C19,18.89 18.1,18 17,18M1,2V4H3L6.6,11.59L5.24,14.04C5.09,14.32 5,14.65 5,15A2,2 0 0,0 7,17H19V15H7.42A0.25,0.25 0 0,1 7.17,14.75C7.17,14.7 7.18,14.66 7.2,14.63L8.1,13H15.55C16.3,13 16.96,12.58 17.3,11.97L20.88,5.5C20.95,5.34 21,5.17 21,5A1,1 0 0,0 20,4H5.21L4.27,2M7,18C5.89,18 5,18.89 5,20A2,2 0 0,0 7,22A2,2 0 0,0 9,20C9,18.89 8.1,18 7,18Z"/>
+                        </svg>
+                      </button>
+                    `
+          : ''
+        }
               </div>
             `
         : ''
@@ -291,10 +641,229 @@ class DiscountsCard extends HTMLElement {
     if (this.config.enable_search) {
       const searchInput = this.shadowRoot.querySelector('.search-input');
       if (searchInput) {
-        searchInput.addEventListener('input', this._onSearchInput.bind(this));
+        searchInput.addEventListener('input', (e) => {
+          this._filterQuery = (e.target.value || '').toLowerCase().trim();
+          this._updateOffersList();
+        });
       }
     }
+
+    if (this.config.todo?.todo_enabled) {
+      const filterBtn = this.shadowRoot.querySelector('.btn-filter-todo');
+      if (filterBtn) {
+        filterBtn.addEventListener('click', () => {
+          this._filterTodoOnly = !this._filterTodoOnly;
+          filterBtn.classList.toggle('active', this._filterTodoOnly);
+          this._updateOffersList();
+        });
+      }
+    }
+
+    const burgerBtn = this.shadowRoot.querySelector('.btn-burger-menu');
+    if (burgerBtn) {
+      burgerBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._menuOpen = !this._menuOpen;
+        this._renderDropdownMenu();
+      });
+    }
+
+    const contentContainer = this.shadowRoot.querySelector('.card-content');
+    if (contentContainer) {
+      contentContainer.addEventListener(
+        'error',
+        (e) => {
+          if (e.target?.classList?.contains('offer-image')) {
+            const rawSrc = e.target.getAttribute('data-src') || e.target.src;
+            if (rawSrc) brokenImageUrls.add(rawSrc);
+            if (e.target.src) brokenImageUrls.add(e.target.src);
+            e.target.style.display = 'none';
+            if (e.target.nextElementSibling) {
+              e.target.nextElementSibling.style.display = 'flex';
+            }
+          }
+        },
+        true
+      );
+      contentContainer.addEventListener('click', (e) => {
+        const addBtn = e.target.closest('.btn-add-todo');
+        const decBtn = e.target.closest('.btn-dec-todo');
+        const countBadge = e.target.closest('.todo-count-badge');
+        const clearStoreBtn = e.target.closest('.btn-clear-store-todo');
+        const addCustomBtn = e.target.closest('.btn-add-custom-todo');
+        const confirmCustomBtn = e.target.closest('.btn-confirm-custom-todo');
+
+        if (clearStoreBtn) {
+          e.stopPropagation();
+          const storeEntity = decodeURIComponent(clearStoreBtn.dataset.store || '');
+          this._clearStoreTodoItems(storeEntity);
+          return;
+        }
+
+        if (addCustomBtn) {
+          e.stopPropagation();
+          const storeEntity = decodeURIComponent(addCustomBtn.dataset.store || '');
+          const inputRow = this.shadowRoot.querySelector(`.custom-input-row[data-store="${encodeURIComponent(storeEntity)}"]`);
+          if (inputRow) {
+            const isHidden = inputRow.style.display === 'none' || !inputRow.style.display;
+            inputRow.style.display = isHidden ? 'flex' : 'none';
+            if (isHidden) {
+              const textInput = inputRow.querySelector('input');
+              setTimeout(() => textInput?.focus(), 50);
+            }
+          }
+          return;
+        }
+
+        if (confirmCustomBtn) {
+          e.stopPropagation();
+          const storeEntity = decodeURIComponent(confirmCustomBtn.dataset.store || '');
+          const inputRow = this.shadowRoot.querySelector(`.custom-input-row[data-store="${encodeURIComponent(storeEntity)}"]`);
+          const textInput = inputRow?.querySelector('input');
+          const val = textInput?.value?.trim();
+          if (val) {
+            textInput.value = '';
+            inputRow.style.display = 'none';
+            this._updateTodoQuantity(val, '', 'inc', null, storeEntity);
+          }
+          return;
+        }
+
+        if (addBtn) {
+          e.stopPropagation();
+          const itemName = decodeURIComponent(addBtn.dataset.item);
+          const itemPrice = decodeURIComponent(addBtn.dataset.price || '');
+          const entityId = decodeURIComponent(addBtn.dataset.entity || '');
+          addBtn.classList.add('added');
+          setTimeout(() => addBtn.classList.remove('added'), 600);
+          this._updateTodoQuantity(itemName, itemPrice, 'inc', null, entityId);
+          return;
+        }
+
+        if (decBtn) {
+          e.stopPropagation();
+          const itemName = decodeURIComponent(decBtn.dataset.item);
+          const itemPrice = decodeURIComponent(decBtn.dataset.price || '');
+          const entityId = decodeURIComponent(decBtn.dataset.entity || '');
+          this._updateTodoQuantity(itemName, itemPrice, 'dec', null, entityId);
+          return;
+        }
+
+        if (countBadge) {
+          e.stopPropagation();
+          const itemName = decodeURIComponent(countBadge.dataset.item);
+          const itemPrice = decodeURIComponent(countBadge.dataset.price || '');
+          const entityId = decodeURIComponent(countBadge.dataset.entity || '');
+          const currentCount = parseInt(countBadge.dataset.count, 10) || 1;
+          const input = window.prompt(`Menge für "${itemName}":`, currentCount);
+          if (input !== null) {
+            const parsed = parseInt(input.trim(), 10);
+            if (!isNaN(parsed)) {
+              this._updateTodoQuantity(itemName, itemPrice, 'set', Math.max(0, parsed), entityId);
+            }
+          }
+        }
+      });
+    }
   }
+
+  _toggleStoreSelection(idx) {
+    if (idx === 'all') {
+      if (this._selectedStoreIndices.size === this.config.entities.length) {
+        this._selectedStoreIndices.clear();
+        this._selectedStoreIndices.add(0);
+      } else {
+        this._selectedStoreIndices = new Set(this.config.entities.map((_, i) => i));
+      }
+    } else {
+      if (this._selectedStoreIndices.has(idx)) {
+        if (this._selectedStoreIndices.size > 1) {
+          this._selectedStoreIndices.delete(idx);
+        }
+      } else {
+        this._selectedStoreIndices.add(idx);
+      }
+    }
+    this._renderDropdownMenu();
+    this._updateHeaderTitle();
+    this._updateOffersList();
+  }
+
+  _renderDropdownMenu() {
+    const dropdown = this.shadowRoot.querySelector('.dropdown-menu');
+    if (!dropdown) return;
+
+    dropdown.classList.toggle('open', this._menuOpen);
+    if (!this._menuOpen) return;
+
+    const allSelected = this._selectedStoreIndices.size === this.config.entities.length;
+
+    dropdown.innerHTML = `
+      <div class="dropdown-item ${allSelected ? 'active' : ''}" data-index="all">
+        <span class="menu-icon ${allSelected ? 'check-icon' : 'menu-icon-spacer'}">
+          ${allSelected
+        ? `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg>`
+        : ''
+      }
+        </span>
+        <span class="menu-label" style="font-weight: 600;">${localize('default.all_stores', this._hass)}</span>
+      </div>
+      <div class="menu-divider"></div>
+      ${this.config.entities
+        .map((store, idx) => {
+          const isSelected = this._selectedStoreIndices.has(idx);
+          return `
+            <div class="dropdown-item ${isSelected ? 'active' : ''}" data-index="${idx}">
+              <span class="menu-icon ${isSelected ? 'check-icon' : 'menu-icon-spacer'}">
+                ${isSelected
+              ? `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/></svg>`
+              : ''
+            }
+              </span>
+              <span class="menu-label">${this._escapeHtml(this._getStoreTitle(store))}</span>
+            </div>
+          `;
+        })
+        .join('')}
+    `;
+
+    dropdown.querySelectorAll('.dropdown-item').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rawIdx = e.currentTarget.dataset.index;
+        const idx = rawIdx === 'all' ? 'all' : parseInt(rawIdx, 10);
+        this._toggleStoreSelection(idx);
+      });
+    });
+  }
+
+  _updateHeaderTitle() {
+    const titleEl = this.shadowRoot.querySelector('.card-title');
+    if (!titleEl) return;
+
+    const totalStores = (this.config.entities || []).length;
+    const selectedCount = this._selectedStoreIndices.size;
+
+    if (this._filterQuery.length > 0) {
+      titleEl.textContent = `${localize('default.search_results', this._hass)} (${selectedCount === totalStores ? localize('default.all_stores', this._hass) : selectedCount + ' ' + localize('default.stores', this._hass)})`;
+      return;
+    }
+
+    if (this.config.title && this.config.title.trim() !== '') {
+      titleEl.textContent = this.config.title;
+      return;
+    }
+
+    if (totalStores === 1 || selectedCount === 1) {
+      const singleIdx = Array.from(this._selectedStoreIndices)[0] || 0;
+      titleEl.textContent = this._getStoreTitle(this.config.entities[singleIdx]);
+    } else if (selectedCount === totalStores) {
+      titleEl.textContent = localize('default.all_stores', this._hass);
+    } else {
+      titleEl.textContent = `${selectedCount} ${localize('default.stores', this._hass)}`;
+    }
+  }
+
   _getItemProps(item) {
     const name =
       item.product ||
@@ -337,13 +906,82 @@ class DiscountsCard extends HTMLElement {
 
     return { name, image, price, oldPrice, subtitle, category };
   }
-  _updateOffersList() {
-    const entity = this._hass?.states[this.config.entity];
-    const contentContainer = this.shadowRoot.querySelector('.card-content');
-    const headerBadge = this.shadowRoot.querySelector('.header-badge');
-    if (!entity || !contentContainer) return;
 
-    const rawOffers =
+  _renderOfferItemHtml(item) {
+    const { name, image, price, oldPrice, subtitle } = this._getItemProps(item);
+    const sanitizedImgUrl = this._sanitizeImageUrl(image);
+    const displayPrice = formatPrice(price);
+    const displayOldPrice = formatPrice(oldPrice);
+    const safeName = this._escapeHtml(name);
+    const safeImgUrl = this._escapeHtml(sanitizedImgUrl);
+    const safeSubtitle = this._escapeHtml(subtitle);
+    const safeDisplayPrice = this._escapeHtml(displayPrice);
+    const safeDisplayOldPrice = this._escapeHtml(displayOldPrice);
+    const storeEntity = item._storeEntity || this.config.entities[0]?.entity;
+    const storeLabel = this._detectStoreLabel(storeEntity);
+    const existingCount = this._getItemTodoCount(item, storeEntity);
+    const isBroken = !sanitizedImgUrl || brokenImageUrls.has(sanitizedImgUrl);
+
+    return `
+      <div class="offer-item">
+        ${this.config.show_images && !isBroken
+        ? `
+              <img
+                class="offer-image"
+                src="${safeImgUrl}"
+                data-src="${safeImgUrl}"
+                alt="${safeName}"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';"
+              />
+              <div class="offer-image-placeholder" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,18H6V14H12M21,14V12L20,7H4L3,12V14H4V20H14V18H18V20H20V14M20,4H4V6H20V4Z"/></svg>
+              </div>
+            `
+        : this.config.show_images
+          ? `
+                <div class="offer-image-placeholder">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12,18H6V14H12M21,14V12L20,7H4L3,12V14H4V20H14V18H18V20H20V14M20,4H4V6H20V4Z"/></svg>
+                </div>
+              `
+          : ''
+      }
+
+        <div class="offer-details">
+          <div class="offer-title">
+            ${safeName}
+            ${this._filterQuery.length > 0 && storeLabel ? `<span class="store-tag">${storeLabel}</span>` : ''}
+          </div>
+          ${subtitle ? `<div class="offer-subtitle">${safeSubtitle}</div>` : ''}
+        </div>
+
+        ${displayPrice
+        ? `
+              <div class="offer-price-container">
+                <span class="offer-price">${safeDisplayPrice}</span>
+                ${displayOldPrice ? `<span class="offer-old-price">${safeDisplayOldPrice}</span>` : ''}
+              </div>
+            `
+        : ''
+      }
+
+        ${this.config.todo?.todo_enabled
+        ? `
+              <div class="todo-btn-container" data-item="${encodeURIComponent(name)}" data-price="${encodeURIComponent(displayPrice || '')}" data-entity="${encodeURIComponent(storeEntity || '')}">
+                ${this._renderTodoControlsHtml(name, displayPrice, existingCount, storeEntity)}
+              </div>
+            `
+        : ''
+      }
+      </div>
+    `;
+  }
+
+  _getRawOffersForEntity(entityId) {
+    const entity = this._hass?.states[entityId];
+    if (!entity) return [];
+    const offers =
       entity.attributes.discounts ||
       entity.attributes.offers ||
       entity.attributes.items ||
@@ -355,17 +993,102 @@ class DiscountsCard extends HTMLElement {
       (Array.isArray(entity.attributes) ? entity.attributes : []) ||
       [];
 
+    return offers.map((o) => ({ ...o, _storeEntity: entityId }));
+  }
+
+  _renderCategoryGroups(items, storeEntity, isSearchMode = false) {
+    const todoCategoryLayout = this.config.todo?.category_layout || 'keep';
+    const isFlatMode = this._filterTodoOnly && todoCategoryLayout === 'flat';
+
+    if (isFlatMode) {
+      return `
+        <div class="offers-list flat-list">
+          ${items.map((item) => this._renderOfferItemHtml(item)).join('')}
+        </div>
+      `;
+    }
+
+    const grouped = {};
+    items.forEach((item) => {
+      const { category } = this._getItemProps(item);
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push(item);
+    });
+
+    return Object.entries(grouped)
+      .map(([category, catItems]) => {
+        const safeCategory = this._escapeHtml(category);
+        const catTodoCount = catItems.filter((item) => this._getItemTodoCount(item, storeEntity) > 0).length;
+        const categoryHtml = `
+          <div class="offers-list">
+            ${catItems.map((item) => this._renderOfferItemHtml(item)).join('')}
+          </div>
+        `;
+
+        const forceOpen =
+          (this._filterTodoOnly && todoCategoryLayout === 'always_open') ||
+          (isSearchMode && this._filterQuery.length > 0);
+
+        if (this.config.collapsible_categories) {
+          const isOpen =
+            forceOpen ||
+            (this._categoryOpenState[`${storeEntity}_${category}`] ?? this.config.categories_open_by_default);
+
+          return `
+            <details class="category-group" data-category="${encodeURIComponent(category)}" data-store="${encodeURIComponent(storeEntity)}" ${isOpen ? 'open' : ''}>
+              <summary>
+                <span>${safeCategory}</span>
+                <span class="badge-count">
+                  ${catItems.length}${this.config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount} 🛒)</span>` : ''}
+                </span>
+              </summary>
+              ${categoryHtml}
+            </details>
+          `;
+        }
+
+        return `
+          <div class="category-group">
+            <div class="category-title-static">
+              <span>${safeCategory}</span>
+              <span class="badge-count">
+                ${catItems.length}${this.config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount} 🛒)</span>` : ''}
+              </span>
+            </div>
+            ${categoryHtml}
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  _updateOffersList() {
+    const contentContainer = this.shadowRoot.querySelector('.card-content');
+    if (!contentContainer) return;
+
+    this._updateHeaderTitle();
+
+    const isSearchMode = this._filterQuery.length > 0;
+    let rawOffers = [];
+
+    this.config.entities.forEach((s, idx) => {
+      if (this._selectedStoreIndices.has(idx)) {
+        const storeOffers = this._getRawOffersForEntity(s.entity);
+        const customItems = this._customStoreTodoItems?.[s.entity] || [];
+        rawOffers.push(...storeOffers, ...customItems);
+      }
+    });
+
+    const filterMode = this.config.filter?.filter_mode || 'none';
+    const filterCategories = this.config.filter?.filter_categories || [];
+
     const filteredOffers = rawOffers.filter((item) => {
       if (!item || typeof item !== 'object') return false;
       const { name, category, subtitle } = this._getItemProps(item);
-      const filterCategories = this.config.filter_categories || [];
 
-      if (this.config.filter_mode === 'blacklist' && filterCategories.includes(category)) {
-        return false;
-      }
-      if (this.config.filter_mode === 'whitelist' && !filterCategories.includes(category)) {
-        return false;
-      }
+      if (filterMode === 'blacklist' && filterCategories.includes(category)) return false;
+      if (filterMode === 'whitelist' && !filterCategories.includes(category)) return false;
+      if (this._filterTodoOnly && this._getItemTodoCount(item, item._storeEntity) <= 0) return false;
       if (!this._filterQuery) return true;
 
       const q = this._filterQuery;
@@ -376,130 +1099,125 @@ class DiscountsCard extends HTMLElement {
       );
     });
 
-    if (headerBadge) {
-      headerBadge.textContent = `${filteredOffers.length} ${localize('default.offers', this._hass)}`;
-    }
+    this._updateHeaderAndCategoryBadges();
 
-    const grouped = {};
-    filteredOffers.forEach((item) => {
-      const { category } = this._getItemProps(item);
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push(item);
-    });
-
-    if (Object.keys(grouped).length === 0) {
+    if (filteredOffers.length === 0) {
       contentContainer.innerHTML = `<div class="no-results">${localize('default.no_offers', this._hass)}</div>`;
       return;
     }
 
-    contentContainer.innerHTML = Object.entries(grouped)
-      .map(([category, items]) => {
-        const safeCategory = this._escapeHtml(category);
-        const categoryHtml = `
-          <div class="offers-list">
-            ${items
-            .map((item) => {
-              const { name, image, price, oldPrice, subtitle } = this._getItemProps(item);
-              const sanitizedImgUrl = this._sanitizeImageUrl(image);
-              const displayPrice = formatPrice(price);
-              const displayOldPrice = formatPrice(oldPrice);
-              const safeName = this._escapeHtml(name);
-              const safeImgUrl = this._escapeHtml(sanitizedImgUrl);
-              const safeSubtitle = this._escapeHtml(subtitle);
-              const safeDisplayPrice = this._escapeHtml(displayPrice);
-              const safeDisplayOldPrice = this._escapeHtml(displayOldPrice);
+    const storeGrouped = {};
+    filteredOffers.forEach((item) => {
+      const ent = item._storeEntity || '';
+      if (!storeGrouped[ent]) storeGrouped[ent] = [];
+      storeGrouped[ent].push(item);
+    });
 
-              return `
-                  <div class="offer-item">
-                    ${this.config.show_images && sanitizedImgUrl
-                  ? `<img
-                          class="offer-image"
-                          src="${safeImgUrl}"
-                          alt="${safeName}"
-                          loading="lazy"
-                          referrerpolicy="no-referrer"
-                          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                        />
-                        <div class="offer-image-placeholder" style="display: none;">${safeName}</div>`
-                  : this.config.show_images
-                    ? `<div class="offer-image-placeholder">${safeName}</div>`
-                    : ''
-                }
-                    <div class="offer-details">
-                      <div class="offer-title">${safeName}</div>
-                      ${subtitle ? `<div class="offer-subtitle">${safeSubtitle}</div>` : ''}
-                    </div>
+    contentContainer.innerHTML = Object.entries(storeGrouped)
+      .map(([storeEntity, items]) => {
+        const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
+        const storeTitle = this._getStoreTitle(storeConf);
+        const storeTodoCount = items.filter((item) => this._getItemTodoCount(item, storeEntity) > 0).length;
 
-                    ${displayPrice
-                  ? `
-                          <div class="offer-price-container">
-                            <span class="offer-price">${safeDisplayPrice}</span>
-                            ${displayOldPrice ? `<span class="offer-old-price">${safeDisplayOldPrice}</span>` : ''}
-                          </div>
-                        `
-                  : ''
-                }
-
-                    ${this.config.enable_todo
-                  ? `
-                          <button class="btn-add-todo" title="${localize('default.add_to_shopping_list', this._hass)}" data-item="${encodeURIComponent(name)}" data-price="${encodeURIComponent(displayPrice || '')}">
-                            <svg style="width:18px;height:18px" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19,13H13V19H11V13H5V11H13V11H19V13Z" />
-                            </svg>
-                          </button>
-                        `
-                  : ''
-                }
-                  </div>
-                `;
-            })
-            .join('')}
-          </div>
-        `;
-
-        if (this.config.collapsible_categories) {
-          const isOpen =
-            this._filterQuery.length > 0
-              ? true
-              : this._categoryOpenState[category] ?? this.config.categories_open_by_default;
-          return `
-            <details class="category-group" data-category="${encodeURIComponent(category)}" ${isOpen ? 'open' : ''}>
-              <summary>
-                <span>${safeCategory}</span>
-                <span class="badge-count">${items.length}</span>
-              </summary>
-              ${categoryHtml}
-            </details>
-          `;
-        }
         return `
-          <div class="category-group">
-            <div class="category-title-static">${safeCategory} (${items.length})</div>
-            ${categoryHtml}
+          <div class="store-section" data-store="${encodeURIComponent(storeEntity)}">
+            <div class="store-section-header">
+              <span class="store-section-title">${this._escapeHtml(storeTitle)}</span>
+              <div class="store-header-actions">
+              ${this.config.todo?.todo_enabled && storeTodoCount > 0
+            ? `
+                    <button class="btn-store-action btn-clear-store-todo" title="${localize('default.clear_shopping_list', this._hass)}" data-store="${encodeURIComponent(storeEntity)}">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+                      </svg>
+                    </button>
+                  `
+            : ''
+          }
+          ${this.config.todo?.todo_enabled
+            ? `
+            <button class="btn-store-action btn-add-custom-todo" title="${localize('default.add_custom_item', this._hass)}" data-store="${encodeURIComponent(storeEntity)}">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
+            </svg>
+            </button>
+            `
+            : ''
+          }
+            <span class="badge-count">
+              ${items.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
+            </span>
+              </div>
+            </div>
+
+            <div class="custom-input-row" data-store="${encodeURIComponent(storeEntity)}" style="display: none;">
+              <input type="text" placeholder="${localize('default.add_custom_item_placeholder', this._hass)}..." class="custom-item-input" />
+              <button class="btn-confirm-custom-todo" data-store="${encodeURIComponent(storeEntity)}" title="${localize('default.add_custom_item', this._hass)}">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/>
+                </svg>
+              </button>
+            </div>
+
+            ${this._renderCategoryGroups(items, storeEntity, isSearchMode)}
           </div>
         `;
       })
       .join('');
 
+    contentContainer.querySelectorAll('.custom-item-input').forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const row = e.target.closest('.custom-input-row');
+          const btn = row?.querySelector('.btn-confirm-custom-todo');
+          btn?.click();
+        }
+      });
+    });
+
     if (this.config.collapsible_categories) {
       contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
         categoryGroup.addEventListener('toggle', () => {
-          if (this._filterQuery.length > 0) return;
+          if (this._filterQuery.length > 0 || this._filterTodoOnly) return;
           const category = decodeURIComponent(categoryGroup.dataset.category);
-          this._categoryOpenState[category] = categoryGroup.open;
+          const store = decodeURIComponent(categoryGroup.dataset.store || '');
+          this._categoryOpenState[`${store}_${category}`] = categoryGroup.open;
         });
       });
+    }
+  }
+
+  _updateHeaderAndCategoryBadges() {
+    let rawOffers = [];
+    this.config.entities.forEach((s, idx) => {
+      if (this._selectedStoreIndices.has(idx)) {
+        rawOffers.push(...this._getRawOffersForEntity(s.entity));
+        const customItems = this._customStoreTodoItems?.[s.entity] || [];
+        rawOffers.push(...customItems);
+      }
+    });
+
+    const totalTodoCount = rawOffers.filter((item) => this._getItemTodoCount(item, item._storeEntity) > 0).length;
+    const headerBadge = this.shadowRoot.querySelector('.header-badge');
+    if (headerBadge) {
+      const offersLabel = localize('default.offers', this._hass);
+      headerBadge.innerHTML = `
+        ${rawOffers.length} ${offersLabel}${this.config.todo?.todo_enabled && totalTodoCount > 0 ? ` <span class="badge-todo-total">(${totalTodoCount} 🛒)</span>` : ''}
+      `;
     }
 
-    if (this.config.enable_todo) {
-      contentContainer.querySelectorAll('.btn-add-todo').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-          const itemName = decodeURIComponent(btn.getAttribute('data-item'));
-          const itemPrice = decodeURIComponent(btn.getAttribute('data-price') || '');
-          this._addItemToTodo(e, itemName, itemPrice);
-        });
-      });
-    }
+    const categoryGroups = this.shadowRoot.querySelectorAll('.category-group');
+    categoryGroups.forEach((group) => {
+      const badge = group.querySelector('summary .badge-count, .category-title-static .badge-count');
+      if (!badge) return;
+
+      const totalItems = group.querySelectorAll('.offer-item').length;
+      const activeTodoItems = group.querySelectorAll('.todo-count-badge').length;
+
+      badge.innerHTML = `
+        ${totalItems}${this.config.todo?.todo_enabled && activeTodoItems > 0 ? ` <span class="badge-todo-total">(${activeTodoItems} 🛒)</span>` : ''}
+      `;
+    });
   }
 
   getCardSize() {
@@ -509,7 +1227,10 @@ class DiscountsCard extends HTMLElement {
 
 class DiscountsCardEditor extends HTMLElement {
   setConfig(config) {
-    this._config = config;
+    this._config = { ...config };
+    if (!Array.isArray(this._config.entities)) {
+      this._config.entities = this._config.entity ? [{ entity: this._config.entity, title: '', default_selected: true }] : [];
+    }
     this.render();
   }
 
@@ -520,7 +1241,7 @@ class DiscountsCardEditor extends HTMLElement {
 
   _valueChanged(ev) {
     if (!this._config || !this._hass) return;
-    const newConfig = { ...ev.detail.value };
+    const newConfig = { ...this._config, ...ev.detail.value };
 
     const event = new CustomEvent('config-changed', {
       detail: { config: newConfig },
@@ -529,20 +1250,69 @@ class DiscountsCardEditor extends HTMLElement {
     });
     this.dispatchEvent(event);
   }
+  _moveStore(fromIndex, toIndex) {
+    const entities = [...(this._config.entities || [])];
+    if (toIndex < 0 || toIndex >= entities.length) return;
+
+    // Preserve open states across move
+    const openStates = this._storeCards?.map((c) => c.itemPanel?.expanded ?? false) || [];
+    const [movedState] = openStates.splice(fromIndex, 1);
+    openStates.splice(toIndex, 0, movedState);
+    this._pendingOpenStates = openStates;
+
+    const [moved] = entities.splice(fromIndex, 1);
+    entities.splice(toIndex, 0, moved);
+    this._storeCards = null;
+    this._valueChanged({ detail: { value: { entities } } });
+  }
+  _updateStore(index, key, val) {
+    const entities = [...(this._config.entities || [])];
+    entities[index] = { ...entities[index], [key]: val };
+    this._valueChanged({ detail: { value: { entities } } });
+  }
+
+  _addStore() {
+    const entities = [
+      ...(this._config.entities || []),
+      { entity: '', title: '', default_selected: true }
+    ];
+    this._valueChanged({ detail: { value: { entities } } });
+  }
+
+  _removeStore(index) {
+    const entities = [...(this._config.entities || [])];
+    entities.splice(index, 1);
+    this._valueChanged({ detail: { value: { entities } } });
+  }
 
   render() {
     if (!this._hass || !this._config) return;
 
-    if (!this._form) {
-      this._form = document.createElement('ha-form');
-      this._form.addEventListener('value-changed', this._valueChanged.bind(this));
-      this.appendChild(this._form);
+    if (!this._initialized) {
+      this.innerHTML = `
+        <div class="editor-form-top"></div>
+        <div class="editor-stores-container" style="margin: 16px 0;"></div>
+        <div class="editor-form-bottom"></div>
+      `;
+      this._topFormContainer = this.querySelector('.editor-form-top');
+      this._storesContainer = this.querySelector('.editor-stores-container');
+      this._bottomFormContainer = this.querySelector('.editor-form-bottom');
+
+      this._formTop = document.createElement('ha-form');
+      this._formTop.addEventListener('value-changed', this._valueChanged.bind(this));
+      this._topFormContainer.appendChild(this._formTop);
+
+      this._formBottom = document.createElement('ha-form');
+      this._formBottom.addEventListener('value-changed', this._valueChanged.bind(this));
+      this._bottomFormContainer.appendChild(this._formBottom);
+
+      this._initialized = true;
     }
 
-    this._form.hass = this._hass;
-    this._form.data = this._config;
+    this._renderStoresEditor();
 
-    this._form.computeLabel = (schema) => {
+    const computeLabel = (schema) => {
+      if (schema.name === 'title') return localize('config.title', this._hass);
       return (
         localize(`config.${schema.name}`, this._hass) ||
         localize(`config.filter.${schema.name}`, this._hass) ||
@@ -551,14 +1321,10 @@ class DiscountsCardEditor extends HTMLElement {
       );
     };
 
-    this._form.schema = [
-      {
-        name: 'entity',
-        required: true,
-        selector: {
-          entity: { domain: ['sensor', 'binary_sensor'] }
-        }
-      },
+    this._formTop.hass = this._hass;
+    this._formTop.data = this._config;
+    this._formTop.computeLabel = computeLabel;
+    this._formTop.schema = [
       {
         name: 'title',
         selector: { text: {} }
@@ -572,7 +1338,13 @@ class DiscountsCardEditor extends HTMLElement {
           { name: 'collapsible_categories', selector: { boolean: {} } },
           { name: 'categories_open_by_default', selector: { boolean: {} } }
         ]
-      },
+      }
+    ];
+
+    this._formBottom.hass = this._hass;
+    this._formBottom.data = this._config;
+    this._formBottom.computeLabel = computeLabel;
+    this._formBottom.schema = [
       {
         name: 'filter',
         type: 'expandable',
@@ -607,34 +1379,274 @@ class DiscountsCardEditor extends HTMLElement {
         schema: [
           { name: 'todo_enabled', selector: { boolean: {} } },
           { name: 'todo_entity', selector: { entity: { domain: 'todo' } } },
-          { name: 'todo_logo', selector: { boolean: {} } },
-          { name: 'todo_price', selector: { boolean: {} } }
+          { name: 'todo_price', selector: { boolean: {} } },
+          { name: 'only_show_todo', selector: { boolean: {} } },
+          {
+            name: 'category_layout',
+            selector: {
+              select: {
+                options: [
+                  { value: 'keep', label: localize('config.category_layout_keep', this._hass) },
+                  { value: 'always_open', label: localize('config.category_layout_always_open', this._hass) },
+                  { value: 'flat', label: localize('config.category_layout_flat', this._hass) }
+                ],
+                mode: 'dropdown'
+              }
+            }
+          }
         ]
       }
     ];
   }
+  _handleDragStart(e, idx) {
+    this._draggedIndex = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(idx));
+    e.currentTarget.style.opacity = '0.4';
+  }
+
+  _handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.style.borderTop = '2px solid var(--primary-color, #03a9f4)';
+  }
+
+  _handleDragLeave(e) {
+    e.currentTarget.style.borderTop = '';
+  }
+
+  _handleDrop(e, toIdx) {
+    e.preventDefault();
+    e.currentTarget.style.borderTop = '';
+    const fromIdx = this._draggedIndex;
+    if (fromIdx !== null && fromIdx !== undefined && fromIdx !== toIdx) {
+      this._moveStore(fromIdx, toIdx);
+    }
+    this._draggedIndex = null;
+  }
+
+  _handleDragEnd(e) {
+    e.currentTarget.style.opacity = '1';
+    e.currentTarget.style.borderTop = '';
+    this._draggedIndex = null;
+  }
+
+  _getStoreHeader(store, idx) {
+    if (store.title && store.title.trim()) return store.title;
+    const entState = this._hass?.states[store.entity];
+    return entState?.attributes?.friendly_name || `${localize("default.store")} ${idx + 1}`;
+  }
+
+  _renderStoresEditor() {
+    const entities = this._config.entities || [];
+    const mainWasExpanded = this._mainStorePanel ? this._mainStorePanel.expanded : true;
+
+    if (!this._mainStorePanel || this._storeCards?.length !== entities.length) {
+      this._storesContainer.innerHTML = '';
+
+      this._mainStorePanel = document.createElement('ha-expansion-panel');
+      this._mainStorePanel.setAttribute('outlined', '');
+      this._mainStorePanel.header = `${localize('config.stores', this._hass)} (${entities.length})`;
+      this._mainStorePanel.expanded = this._mainExpanded ?? mainWasExpanded;
+      this._mainStorePanel.style.cssText = '--expansion-panel-content-padding: 8px 12px 12px;';
+      this._mainStorePanel.addEventListener('expanded-changed', (e) => {
+        this._mainExpanded = e.detail?.expanded ?? this._mainStorePanel.expanded;
+      });
+
+      this._listEl = document.createElement('div');
+      this._listEl.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+      this._mainStorePanel.appendChild(this._listEl);
+
+      this._storeCards = [];
+
+      entities.forEach((s, idx) => {
+        const itemPanel = document.createElement('ha-expansion-panel');
+        itemPanel.setAttribute('outlined', '');
+        itemPanel.setAttribute('draggable', 'true');
+        itemPanel.expanded = this._pendingOpenStates?.[idx] ?? false;
+        itemPanel.style.cssText = `
+          --expansion-panel-summary-padding: 0 8px;
+          --expansion-panel-content-padding: 0 12px 12px;
+          margin: 0 !important;
+          border-radius: 8px;
+          transition: opacity 0.15s ease, border-top 0.15s ease;
+        `;
+
+        itemPanel.addEventListener('dragstart', (e) => {
+          if (['INPUT', 'SELECT', 'HA-FORM', 'BUTTON'].includes(e.target.tagName)) {
+            e.preventDefault();
+            return;
+          }
+          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
+          this._handleDragStart(e, currentIdx);
+        });
+        itemPanel.addEventListener('dragover', (e) => this._handleDragOver(e));
+        itemPanel.addEventListener('dragleave', (e) => this._handleDragLeave(e));
+        itemPanel.addEventListener('drop', (e) => {
+          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
+          this._handleDrop(e, currentIdx);
+        });
+        itemPanel.addEventListener('dragend', (e) => this._handleDragEnd(e));
+
+        const headerEl = document.createElement('div');
+        headerEl.slot = 'header';
+        headerEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; min-height: 48px;';
+
+        const headerLeft = document.createElement('div');
+        headerLeft.style.cssText = 'display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;';
+
+        const storeIcon = document.createElement('ha-svg-icon');
+        storeIcon.path = 'M19,6H17V4A2,2 0 0,0 15,2H9A2,2 0 0,0 7,4V6H5A2,2 0 0,0 3,8V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V8A2,2 0 0,0 19,6M9,4H15V6H9V4M19,19H5V8H19V19Z';
+        storeIcon.style.cssText = 'width: 20px; height: 20px; color: var(--secondary-text-color); flex-shrink: 0;';
+
+        const titleText = document.createElement('div');
+        titleText.style.cssText = 'font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+        titleText.textContent = this._getStoreHeader(s, idx);
+
+        headerLeft.appendChild(storeIcon);
+        headerLeft.appendChild(titleText);
+
+        const headerRight = document.createElement('div');
+        headerRight.style.cssText = 'display: flex; align-items: center; gap: 2px; flex-shrink: 0;';
+
+        const delBtn = document.createElement('ha-icon-button');
+        delBtn.path = 'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z';
+        delBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px;';
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
+          this._storeCards = null;
+          this._removeStore(currentIdx);
+        });
+        // Up button
+        const moveUpBtn = document.createElement('ha-icon-button');
+        moveUpBtn.path = 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z';
+        moveUpBtn.disabled = idx === 0;
+        moveUpBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px; color: var(--secondary-text-color);';
+        moveUpBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._moveStore(idx, idx - 1);
+        });
+
+        // Down button
+        const moveDownBtn = document.createElement('ha-icon-button');
+        moveDownBtn.path = 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z';
+        moveDownBtn.disabled = idx === entities.length - 1;
+        moveDownBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px; color: var(--secondary-text-color);';
+        moveDownBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._moveStore(idx, idx + 1);
+        });
+
+        headerRight.appendChild(moveUpBtn);
+        headerRight.appendChild(moveDownBtn);
+
+        headerRight.appendChild(delBtn);
+        headerEl.appendChild(headerLeft);
+        headerEl.appendChild(headerRight);
+        itemPanel.appendChild(headerEl);
+
+        const content = document.createElement('div');
+        content.style.cssText = 'padding-top: 8px; display: flex; flex-direction: column; gap: 8px;';
+
+        const storeForm = document.createElement('ha-form');
+        storeForm.hass = this._hass;
+        storeForm.schema = [
+          {
+            name: 'entity',
+            required: true,
+            selector: { entity: { domain: ['sensor', 'binary_sensor'] } }
+          },
+          {
+            name: 'title',
+            selector: { text: {} }
+          },
+          {
+            name: 'default_selected',
+            selector: { boolean: {} }
+          }
+        ];
+        storeForm.computeLabel = (schema) => {
+          if (schema.name === 'entity') return localize('config.entity', this._hass);
+          if (schema.name === 'title') return localize('config.title', this._hass);
+          if (schema.name === 'default_selected') return localize('config.default_selected', this._hass);
+          return schema.name;
+        };
+
+        storeForm.addEventListener('value-changed', (ev) => {
+          ev.stopPropagation();
+          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
+          const updated = ev.detail.value;
+          const currentEntities = [...(this._config.entities || [])];
+          currentEntities[currentIdx] = {
+            entity: updated.entity || '',
+            title: updated.title || '',
+            default_selected: updated.default_selected !== false
+          };
+          this._valueChanged({ detail: { value: { entities: currentEntities } } });
+        });
+
+        content.appendChild(storeForm);
+        itemPanel.appendChild(content);
+
+        this._listEl.appendChild(itemPanel);
+        this._storeCards.push({ itemPanel, titleText, storeForm });
+      });
+
+      this._pendingOpenStates = null;
+
+      const addBtn = document.createElement('ha-button');
+      addBtn.setAttribute('outlined', '');
+      addBtn.style.cssText = 'display: block; width: 100%; margin-top: 8px;';
+      addBtn.innerHTML = `
+        <ha-svg-icon slot="icon" path="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"></ha-svg-icon>
+        ${localize('config.add_store', this._hass)}
+      `;
+      addBtn.addEventListener('click', () => {
+        this._storeCards = null;
+        this._addStore();
+      });
+      this._mainStorePanel.appendChild(addBtn);
+
+      this._storesContainer.appendChild(this._mainStorePanel);
+    }
+
+    if (this._mainStorePanel) {
+      this._mainStorePanel.header = `${localize('config.stores', this._hass)} (${entities.length})`;
+    }
+
+    entities.forEach((s, idx) => {
+      const item = this._storeCards[idx];
+      if (item) {
+        item.titleText.textContent = this._getStoreHeader(s, idx);
+        item.storeForm.hass = this._hass;
+        item.storeForm.data = {
+          entity: s.entity || '',
+          title: s.title || '',
+          default_selected: s.default_selected !== false
+        };
+      }
+    });
+  }
 
   _getCategories() {
-    if (!this._hass || !this._config?.entity) return [];
+    if (!this._hass || !this._config?.entities) return [];
 
-    const entity = this._hass.states[this._config.entity];
-    if (!entity?.attributes) return [];
+    const categories = new Set();
+    this._config.entities.forEach((s) => {
+      const entity = this._hass.states[s.entity];
+      const offers =
+        entity?.attributes?.discounts ||
+        entity?.attributes?.offers ||
+        entity?.attributes?.items ||
+        [];
+      offers.forEach((item) => {
+        const cat = item.category || item.category_name;
+        if (cat) categories.add(cat);
+      });
+    });
 
-    const offers =
-      entity.attributes.discounts ||
-      entity.attributes.offers ||
-      entity.attributes.items ||
-      entity.attributes.data ||
-      entity.attributes.coupons ||
-      [];
-
-    const categories = [
-      ...new Set(
-        offers.map((item) => item.category || item.category_name || localize('default.other_offers', this._hass))
-      )
-    ].sort();
-
-    return categories.map((cat) => ({ value: cat, label: cat }));
+    return [...categories].sort().map((cat) => ({ value: cat, label: cat }));
   }
 }
 
