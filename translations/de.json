@@ -25,7 +25,7 @@
   },
   "config": {
     "entity": "Supermarkt",
-    "titel": "Kartenüberschrift (optional)",
+    "title": "Kartenüberschrift (optional)",
     "show_images": "Produktbilder anzeigen",
     "enable_search": "Suchfunktion aktivieren",
     "collapsible_categories": "Kategorien einklappbar",

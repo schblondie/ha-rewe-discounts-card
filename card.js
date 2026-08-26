@@ -69,7 +69,7 @@ var rewe = {
 };
 var config = {
 	entity: "Supermarkt",
-	titel: "Kartenüberschrift (optional)",
+	title: "Kartenüberschrift (optional)",
 	show_images: "Produktbilder anzeigen",
 	enable_search: "Suchfunktion aktivieren",
 	collapsible_categories: "Kategorien einklappbar",
@@ -176,8 +176,8 @@ class DiscountsCard extends HTMLElement {
       enable_search: true,
       collapsible_categories: true,
       categories_open_by_default: true,
-      category_filter_mode: 'none',
-      category_filter_categories: [],
+      filter_mode: 'none',
+      filter_categories: [],
       enable_todo: false,
       todo_entity: '',
       logo: true,
@@ -199,8 +199,8 @@ class DiscountsCard extends HTMLElement {
       enable_search: true,
       collapsible_categories: true,
       categories_open_by_default: true,
-      category_filter_mode: 'none',
-      category_filter_categories: [],
+      filter_mode: 'none',
+      filter_categories: [],
       enable_todo: false,
       todo_entity: '',
       logo: logoSetting,
@@ -402,7 +402,48 @@ class DiscountsCard extends HTMLElement {
       }
     }
   }
+  _getItemProps(item) {
+    const name =
+      item.product ||
+      item.title ||
+      item.name ||
+      item.brand ||
+      item.article ||
+      localize('default.offer', this._hass);
 
+    const image =
+      item.picture_link ||
+      item.picture ||
+      item.image_url ||
+      item.image ||
+      item.photo ||
+      '';
+
+    const price = item.price || item.current_price || '';
+    const oldPrice = item.old_price || item.regular_price || '';
+
+    let subtitle = item.subtitle || item.description || item.base_price || '';
+    if (!subtitle && item.packaging) {
+      subtitle = item.packaging.split('\n')[0];
+    } else if (!subtitle && item.price_per_unit) {
+      subtitle = item.price_per_unit;
+    } else if (!subtitle && item.brand && item.brand !== name) {
+      subtitle = item.brand;
+    }
+
+    const validInfo = item.valid_until || item.valid_date || item.valid_from || '';
+    if (validInfo) {
+      subtitle = subtitle ? `${subtitle} • ${validInfo}` : validInfo;
+    }
+
+    const category =
+      item.category ||
+      item.category_name ||
+      item.section ||
+      localize('default.other_offers', this._hass);
+
+    return { name, image, price, oldPrice, subtitle, category };
+  }
   _updateOffersList() {
     const entity = this._hass?.states[this.config.entity];
     const contentContainer = this.shadowRoot.querySelector('.card-content');
@@ -413,43 +454,32 @@ class DiscountsCard extends HTMLElement {
       entity.attributes.discounts ||
       entity.attributes.offers ||
       entity.attributes.items ||
+      entity.attributes.products ||
+      entity.attributes.articles ||
+      entity.attributes.entries ||
       entity.attributes.data ||
       entity.attributes.coupons ||
+      (Array.isArray(entity.attributes) ? entity.attributes : []) ||
       [];
 
     const filteredOffers = rawOffers.filter((item) => {
-      const category = item.category || item.category_name || 'Weitere Angebote';
-      const filterCategories = this.config.category_filter_categories || [];
+      if (!item || typeof item !== 'object') return false;
+      const { name, category, subtitle } = this._getItemProps(item);
+      const filterCategories = this.config.filter_categories || [];
 
-      if (
-        this.config.category_filter_mode === 'blacklist' &&
-        filterCategories.includes(category)
-      ) {
+      if (this.config.filter_mode === 'blacklist' && filterCategories.includes(category)) {
         return false;
       }
-      if (
-        this.config.category_filter_mode === 'whitelist' &&
-        !filterCategories.includes(category)
-      ) {
+      if (this.config.filter_mode === 'whitelist' && !filterCategories.includes(category)) {
         return false;
       }
       if (!this._filterQuery) return true;
 
-      const title = (item.title || item.name || item.product || item.brand || '').toLowerCase();
-      const cat = (item.category || item.category_name || '').toLowerCase();
-      const desc = (
-        item.description ||
-        item.subtitle ||
-        item.packaging ||
-        item.price_per_unit ||
-        item.base_price ||
-        ''
-      ).toLowerCase();
-
+      const q = this._filterQuery;
       return (
-        title.includes(this._filterQuery) ||
-        cat.includes(this._filterQuery) ||
-        desc.includes(this._filterQuery)
+        name.toLowerCase().includes(q) ||
+        category.toLowerCase().includes(q) ||
+        subtitle.toLowerCase().includes(q)
       );
     });
 
@@ -459,9 +489,9 @@ class DiscountsCard extends HTMLElement {
 
     const grouped = {};
     filteredOffers.forEach((item) => {
-      const cat = item.category || item.category_name || localize('default.other_offers', this._hass);
-      if (!grouped[cat]) grouped[cat] = [];
-      grouped[cat].push(item);
+      const { category } = this._getItemProps(item);
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push(item);
     });
 
     if (Object.keys(grouped).length === 0) {
@@ -476,30 +506,11 @@ class DiscountsCard extends HTMLElement {
           <div class="offers-list">
             ${items
             .map((item) => {
-              const itemName =
-                item.title ||
-                item.name ||
-                item.product ||
-                item.brand ||
-                item.base_price ||
-                localize('default.offer', this._hass);
-              const imgUrl = item.picture_link || item.image_url || item.image || item.picture || item.photo;
-              const sanitizedImgUrl = this._sanitizeImageUrl(imgUrl);
-              const price = item.price || item.current_price;
-              const oldPrice = item.old_price || item.regular_price;
-
-              let subtitle = item.subtitle || item.description || item.base_price;
-              if (!subtitle && item.packaging) {
-                subtitle = item.packaging.split('\n')[0];
-              } else if (!subtitle && item.price_per_unit) {
-                subtitle = item.price_per_unit;
-              } else if (!subtitle && item.brand && item.brand !== itemName) {
-                subtitle = item.brand;
-              }
-
+              const { name, image, price, oldPrice, subtitle } = this._getItemProps(item);
+              const sanitizedImgUrl = this._sanitizeImageUrl(image);
               const displayPrice = formatPrice(price);
               const displayOldPrice = formatPrice(oldPrice);
-              const safeItemName = this._escapeHtml(itemName);
+              const safeName = this._escapeHtml(name);
               const safeImgUrl = this._escapeHtml(sanitizedImgUrl);
               const safeSubtitle = this._escapeHtml(subtitle);
               const safeDisplayPrice = this._escapeHtml(displayPrice);
@@ -508,14 +519,21 @@ class DiscountsCard extends HTMLElement {
               return `
                   <div class="offer-item">
                     ${this.config.show_images && sanitizedImgUrl
-                  ? `<img class="offer-image" src="${safeImgUrl}" alt="" loading="lazy" onerror="this.remove()" />`
+                  ? `<img
+                          class="offer-image"
+                          src="${safeImgUrl}"
+                          alt="${safeName}"
+                          loading="lazy"
+                          referrerpolicy="no-referrer"
+                          onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                        />
+                        <div class="offer-image-placeholder" style="display: none;">${safeName}</div>`
                   : this.config.show_images
-                    ? `<div class="offer-image-placeholder">${safeItemName}</div>`
+                    ? `<div class="offer-image-placeholder">${safeName}</div>`
                     : ''
                 }
-
                     <div class="offer-details">
-                      <div class="offer-title">${safeItemName}</div>
+                      <div class="offer-title">${safeName}</div>
                       ${subtitle ? `<div class="offer-subtitle">${safeSubtitle}</div>` : ''}
                     </div>
 
@@ -531,9 +549,9 @@ class DiscountsCard extends HTMLElement {
 
                     ${this.config.enable_todo
                   ? `
-                          <button class="btn-add-todo" title="${localize('default.add_to_shopping_list', this._hass)}" data-item="${encodeURIComponent(itemName)}" data-price="${encodeURIComponent(displayPrice || '')}">
+                          <button class="btn-add-todo" title="${localize('default.add_to_shopping_list', this._hass)}" data-item="${encodeURIComponent(name)}" data-price="${encodeURIComponent(displayPrice || '')}">
                             <svg style="width:18px;height:18px" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                              <path d="M19,13H13V19H11V13H5V11H13V11H19V13Z" />
                             </svg>
                           </button>
                         `
@@ -634,7 +652,7 @@ class DiscountsCardEditor extends HTMLElement {
     this._form.computeLabel = (schema) => {
       return (
         localize(`config.${schema.name}`, this._hass) ||
-        localize(`config.category_filter.${schema.name}`, this._hass) ||
+        localize(`config.filter.${schema.name}`, this._hass) ||
         localize(`config.todo.${schema.name}`, this._hass) ||
         schema.name
       );

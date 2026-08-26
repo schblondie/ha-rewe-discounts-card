@@ -8,6 +8,7 @@ Requires one of the following integrations to be installed and configured:
 - [Edeka Discounts Integration](https://github.com/FaserF/ha-edeka)
 - [Lidl Discounts Integration](https://github.com/FaserF/ha-lidl)
 - [Aldi Discounts Integration](https://github.com/FaserF/ha-aldi)
+- [Norma Discounts Integration](https://github.com/FaserF/ha-norma)
 
 ## Installation
 
