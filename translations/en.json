@@ -1,0 +1,47 @@
+{
+  "default": {
+    "title": "Title",
+    "search": "Search offers",
+    "offer": "Offer",
+    "offers": "Offers",
+    "no_offers": "No current offers found",
+    "other_offers": "Other offers",
+    "add_to_shopping_list": "Add to shopping list"
+  },
+  "aldi": {
+    "title": "Aldi Offers"
+  },
+  "edeka": {
+    "title": "EDEKA Offers"
+  },
+  "lidl": {
+    "title": "LIDL Offers"
+  },
+  "norma" :{
+    "title": "Norma Offers"
+  },
+  "rewe": {
+    "title": "REWE Offers"
+  },
+  "config": {
+    "entity": "Supermarket",
+    "title": "Card Title (optional)",
+    "show_images": "Show Product Images",
+    "enable_search": "Enable Search Functionality",
+    "collapsible_categories": "Collapsible Categories",
+    "categories_open_by_default": "Categories Open by Default",
+    "filter": "Filter Categories",
+    "filter_mode": "Filter Mode for Categories",
+    "filter_modes": {
+      "none": "Show All Categories",
+      "blacklist": "Hide Selected Categories",
+      "whitelist": "Show Only Selected Categories"
+    },
+    "filter_categories": "Categories to Filter (Selection)",
+    "todo": "Shopping List",
+    "todo_enabled": "Enable Shopping List",
+    "todo_entity": "Shopping List Entity (optional)",
+    "todo_logo": "Append Supermarket Name to Shopping List",
+    "todo_price": "Append Price to Shopping List"
+  }
+}
