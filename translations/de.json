@@ -6,7 +6,20 @@
     "offers": "Angebote",
     "no_offers": "Keine aktuellen Angebote gefunden",
     "other_offers": "Weitere Angebote",
-    "add_to_shopping_list": "Zur Einkaufsliste hinzufügen"
+    "add_to_shopping_list": "Zur Einkaufsliste hinzufügen",
+    "all_stores": "Alle Märkte",
+    "stores": "Märkte",
+    "store": "Markt",
+    "add_custom_item": "Benutzerdefinierten Artikel hinzufügen",
+    "clear_shopping_list": "Einkaufsliste leeren",
+    "add_custom_item_placeholder": "Artikelname...",
+    "change_to_todo": "Zwischen Einkaufsliste und Angeboten wechseln",
+    "remove_store": "Supermarkt entfernen",
+    "add_store": "Supermarkt hinzufügen",
+    "select_store": "Supermärkte auswählen",
+    "remove_all_from_shopping_list": "Möchtest du alle Artikel für {storeTitle} von der Einkaufsliste entfernen?",
+    "custom_items": "Eigene Artikel",
+    "search_results": "Suchergebnisse"
   },
   "aldi": {
     "title": "Aldi Angebote"
@@ -25,7 +38,8 @@
   },
   "config": {
     "entity": "Supermarkt",
-    "title": "Kartenüberschrift (optional)",
+    "title": "Anzeigename (optional)",
+    "default_selected": "Standardmäßig ausgewählt",
     "show_images": "Produktbilder anzeigen",
     "enable_search": "Suchfunktion aktivieren",
     "collapsible_categories": "Kategorien einklappbar",
@@ -42,6 +56,14 @@
     "todo_enabled": "Einkaufsliste aktivieren",
     "todo_entity": "Einkaufsliste Entität (optional)",
     "todo_logo": "Füge den Namen des Supermarkts in der Einkaufsliste an",
-    "todo_price": "Füge den Preis an die Einkaufsliste an"
+    "todo_price": "Füge den Preis an die Einkaufsliste an",
+    "only_show_todo": "Einkaufsliste bei Laden anzeigen",
+    "category_layout": "Verhalten der Einkaufsliste",
+    "category_layout_keep": "Behalte das Verhalten der Kategorien bei",
+    "category_layout_always_open": "Kategorien immer geöffnet",
+    "category_layout_flat": "Keine Kategorisierung der Angebote",
+    "move_up": "Nach oben verschieben",
+    "move_down": "Nach unten verschieben"
+
   }
 }

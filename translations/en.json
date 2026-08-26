@@ -6,7 +6,20 @@
     "offers": "Offers",
     "no_offers": "No current offers found",
     "other_offers": "Other offers",
-    "add_to_shopping_list": "Add to shopping list"
+    "add_to_shopping_list": "Add to shopping list",
+    "all_stores": "All Stores",
+    "stores": "Stores",
+    "store": "Store",
+    "add_custom_item": "Add custom item",
+    "clear_shopping_list": "Clear shopping list",
+    "add_custom_item_placeholder": "Item name...",
+    "change_to_todo": "Switch between shopping list and offers",
+    "remove_store": "Remove supermarket",
+    "add_store": "Add supermarket",
+    "select_store": "Select supermarkets",
+    "remove_all_from_shopping_list": "Do you want to remove all items for {storeTitle} from the shopping list?",
+    "custom_items": "Custom items",
+    "search_results": "Search results"
   },
   "aldi": {
     "title": "Aldi Offers"
@@ -25,7 +38,8 @@
   },
   "config": {
     "entity": "Supermarket",
-    "title": "Card Title (optional)",
+    "title": "Display name (optional)",
+    "default_selected": "Selected by default",
     "show_images": "Show Product Images",
     "enable_search": "Enable Search Functionality",
     "collapsible_categories": "Collapsible Categories",
@@ -42,6 +56,13 @@
     "todo_enabled": "Enable Shopping List",
     "todo_entity": "Shopping List Entity (optional)",
     "todo_logo": "Append Supermarket Name to Shopping List",
-    "todo_price": "Append Price to Shopping List"
+    "todo_price": "Append Price to Shopping List",
+    "only_show_todo": "Show Shopping List On Load",
+    "category_layout": "Shopping List Behavior",
+    "category_layout_keep": "Keep Category Behavior",
+    "category_layout_always_open": "Always Open Category Layout",
+    "category_layout_flat": "Remove Category Layout",
+    "move_up": "Move Up",
+    "move_down": "Move Down"
   }
 }
