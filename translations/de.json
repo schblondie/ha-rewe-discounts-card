@@ -1,0 +1,47 @@
+{
+  "default": {
+    "title": "Angebote",
+    "search": "Angebote durchsuchen",
+    "offer": "Angebot",
+    "offers": "Angebote",
+    "no_offers": "Keine aktuellen Angebote gefunden",
+    "other_offers": "Weitere Angebote",
+    "add_to_shopping_list": "Zur Einkaufsliste hinzufügen"
+  },
+  "aldi": {
+    "title": "Aldi Angebote"
+  },
+  "edeka": {
+    "title": "EDEKA Angebote"
+  },
+  "lidl": {
+    "title": "LIDL Angebote"
+  },
+  "norma" :{
+    "title": "Norma Angebote"
+  },
+  "rewe": {
+    "title": "REWE Angebote"
+  },
+  "config": {
+    "entity": "Supermarkt",
+    "title": "Kartenüberschrift (optional)",
+    "show_images": "Produktbilder anzeigen",
+    "enable_search": "Suchfunktion aktivieren",
+    "collapsible_categories": "Kategorien einklappbar",
+    "categories_open_by_default": "Kategorien standardmäßig geöffnet",
+    "filter": "Kategorien filtern",
+    "filter_mode": "Filtermodus für Kategorien",
+    "filter_modes": {
+      "none": "Zeige alle Kategorien",
+      "blacklist": "Verberge ausgewählte Kategorien",
+      "whitelist": "Zeige nur ausgewählte Kategorien"
+    },
+    "filter_categories": "Zu filternde Kategorien (Auswahl)",
+    "todo": "Einkaufsliste",
+    "todo_enabled": "Einkaufsliste aktivieren",
+    "todo_entity": "Einkaufsliste Entität (optional)",
+    "todo_logo": "Füge den Namen des Supermarkts in der Einkaufsliste an",
+    "todo_price": "Füge den Preis an die Einkaufsliste an"
+  }
+}

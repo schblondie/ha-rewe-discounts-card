@@ -1,29 +1,12 @@
 {
-  "name": "discounts-card",
-  "version": "3.0.0",
-  "description": "A card to display the discounts from a supermarket sensor and add them to the shopping list.",
-  "main": "card.js",
+  "devDependencies": {
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "rollup": "^4.63.0",
+    "rollup-plugin-string": "^3.0.0"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/schblondie/ha-rewe-discounts-card.git"
-  },
-  "keywords": [
-    "hass",
-    "homeassistant",
-    "lovelace",
-    "card",
-    "home-assistant",
-    "rewe",
-    "shopping-list",
-    "discounts"
-  ],
-  "author": "schblondie",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/schblondie/ha-rewe-discounts-card/issues"
-  },
-  "homepage": "https://github.com/schblondie/ha-rewe-discounts-card#readme"
+    "build": "rollup -c",
+    "watch": "rollup -c -w"
+  }
 }
