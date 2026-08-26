@@ -186,6 +186,7 @@ class DiscountsCard extends HTMLElement {
     this._menuOpen = false;
     this._customInputVisibility = {};
     this._customInputValues = {};
+    this._focusedCustomInputStore = null;
 
     this._onDocClick = (e) => {
       if (!this._menuOpen) return;
@@ -904,7 +905,7 @@ class DiscountsCard extends HTMLElement {
           }
           return;
         }
-
+        this._focusedCustomInputStore = null;
         if (confirmCustomBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(confirmCustomBtn.dataset.store || '');
@@ -914,8 +915,7 @@ class DiscountsCard extends HTMLElement {
           if (val) {
             if (textInput) textInput.value = '';
             this._customInputValues[storeEntity] = '';
-            this._customInputVisibility[storeEntity] = false;
-            if (inputRow) inputRow.style.display = 'none';
+            this._focusedCustomInputStore = storeEntity;
             this._updateTodoQuantity(val, '', 'inc', null, storeEntity);
           }
           return;
@@ -1364,6 +1364,10 @@ class DiscountsCard extends HTMLElement {
     contentContainer.querySelectorAll('.custom-item-input').forEach((input) => {
       const row = input.closest('.custom-input-row');
       const storeEntity = decodeURIComponent(row?.dataset.store || '');
+
+      input.addEventListener('focus', () => {
+        this._focusedCustomInputStore = storeEntity;
+      });
       input.addEventListener('input', (e) => {
         this._customInputValues[storeEntity] = e.target.value;
       });
@@ -1374,6 +1378,17 @@ class DiscountsCard extends HTMLElement {
         }
       });
     });
+
+    // Restore focus after DOM update:
+    if (this._focusedCustomInputStore && this._customInputVisibility[this._focusedCustomInputStore]) {
+      const activeRow = contentContainer.querySelector(
+        `.custom-input-row[data-store="${encodeURIComponent(this._focusedCustomInputStore)}"]`
+      );
+      const activeInput = activeRow?.querySelector('input');
+      if (activeInput) {
+        setTimeout(() => activeInput.focus(), 0);
+      }
+    }
 
     if (this.config.collapsible_categories) {
       contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
