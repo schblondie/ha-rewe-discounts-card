@@ -35,6 +35,8 @@ class DiscountsCard extends HTMLElement {
     this._customStoreTodoItems = {};
     this._selectedStoreIndices = new Set([0]);
     this._menuOpen = false;
+    this._customInputVisibility = {};
+    this._customInputValues = {};
 
     this._onDocClick = (e) => {
       if (!this._menuOpen) return;
@@ -53,7 +55,7 @@ class DiscountsCard extends HTMLElement {
 
   disconnectedCallback() {
     document.removeEventListener('click', this._onDocClick);
-  } s
+  }
 
   static async getConfigElement() {
     return document.createElement('discounts-card-editor');
@@ -79,20 +81,18 @@ class DiscountsCard extends HTMLElement {
     const selectedEntities = supermarketEntities.slice(0, 3).map((ent) => ({
       entity: ent,
       title: '',
-      default_selected: true
+      default_selected: true,
+      filter_mode: 'none',
+      filter_categories: []
     }));
 
     return {
       title: '',
-      entities: selectedEntities.length > 0 ? selectedEntities : [{ entity: '', title: '', default_selected: true }],
+      entities: selectedEntities.length > 0 ? selectedEntities : [{ entity: '', title: '', default_selected: true, filter_mode: 'none', filter_categories: [] }],
       show_images: true,
       enable_search: true,
       collapsible_categories: true,
       categories_open_by_default: true,
-      filter: {
-        filter_mode: 'none',
-        filter_categories: []
-      },
       todo: {
         todo_enabled: false,
         todo_entity: '',
@@ -105,17 +105,26 @@ class DiscountsCard extends HTMLElement {
 
   setConfig(config) {
     const showConfig = config.show || {};
-    const filterConfig = config.filter || {};
     const todoConfig = config.todo || {};
 
     let normalizedEntities = [];
     if (Array.isArray(config.entities)) {
       normalizedEntities = config.entities.map((item) => {
-        if (typeof item === 'string') return { entity: item, title: '', default_selected: true };
+        if (typeof item === 'string') {
+          return {
+            entity: item,
+            title: '',
+            default_selected: true,
+            filter_mode: 'none',
+            filter_categories: []
+          };
+        }
         return {
           entity: item.entity || '',
           title: item.title || '',
-          default_selected: item.default_selected !== false
+          default_selected: item.default_selected !== false,
+          filter_mode: item.filter_mode || 'none',
+          filter_categories: item.filter_categories || []
         };
       });
     } else if (config.entity) {
@@ -123,7 +132,9 @@ class DiscountsCard extends HTMLElement {
         {
           entity: config.entity,
           title: config.title || '',
-          default_selected: true
+          default_selected: true,
+          filter_mode: 'none',
+          filter_categories: []
         }
       ];
     }
@@ -143,18 +154,6 @@ class DiscountsCard extends HTMLElement {
       categories_open_by_default: true,
       ...config,
       entities: normalizedEntities,
-      filter: {
-        filter_mode:
-          filterConfig.filter_mode ??
-          config.category_filter_mode ??
-          config.filter_mode ??
-          'none',
-        filter_categories:
-          filterConfig.filter_categories ??
-          config.category_filter_categories ??
-          config.filter_categories ??
-          []
-      },
       todo: {
         todo_enabled:
           todoConfig.todo_enabled ??
@@ -423,7 +422,7 @@ class DiscountsCard extends HTMLElement {
     const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
     const storeTitle = this._getStoreTitle(storeConf);
     let confirmMessage = localize('default.remove_all_from_shopping_list', this._hass);
-    confirmMessage = confirmMessage.replace("{storeTitle}", `"${storeTitle}"`);
+    confirmMessage = confirmMessage.replace('{storeTitle}', `"${storeTitle}"`);
     if (!window.confirm(confirmMessage)) return;
 
     const storeOffers = this._getRawOffersForEntity(storeEntity);
@@ -575,6 +574,28 @@ class DiscountsCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         ${cardStyles}
+        .search-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+          width: 100%;
+        }
+        .btn-clear-search {
+          position: absolute;
+          right: 8px;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          color: var(--secondary-text-color);
+        }
+        .btn-clear-search svg {
+          width: 18px;
+          height: 18px;
+        }
       </style>
 
       <ha-card>
@@ -615,6 +636,11 @@ class DiscountsCard extends HTMLElement {
                           placeholder="${this._escapeHtml(localize('default.search', this._hass))}"
                           value="${this._escapeHtml(this._filterQuery)}"
                         />
+                        <button class="btn-clear-search" style="${this._filterQuery ? 'display: flex;' : 'display: none;'}" title="Clear">
+                          <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                          </svg>
+                        </button>
                       </div>
                     `
           : '<div style="flex:1;"></div>'
@@ -640,9 +666,23 @@ class DiscountsCard extends HTMLElement {
 
     if (this.config.enable_search) {
       const searchInput = this.shadowRoot.querySelector('.search-input');
+      const clearBtn = this.shadowRoot.querySelector('.btn-clear-search');
+
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           this._filterQuery = (e.target.value || '').toLowerCase().trim();
+          if (clearBtn) {
+            clearBtn.style.display = e.target.value ? 'flex' : 'none';
+          }
+          this._updateOffersList();
+        });
+      }
+
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          this._filterQuery = '';
+          if (searchInput) searchInput.value = '';
+          clearBtn.style.display = 'none';
           this._updateOffersList();
         });
       }
@@ -703,11 +743,12 @@ class DiscountsCard extends HTMLElement {
         if (addCustomBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(addCustomBtn.dataset.store || '');
+          this._customInputVisibility[storeEntity] = !this._customInputVisibility[storeEntity];
           const inputRow = this.shadowRoot.querySelector(`.custom-input-row[data-store="${encodeURIComponent(storeEntity)}"]`);
           if (inputRow) {
-            const isHidden = inputRow.style.display === 'none' || !inputRow.style.display;
-            inputRow.style.display = isHidden ? 'flex' : 'none';
-            if (isHidden) {
+            const isVisible = Boolean(this._customInputVisibility[storeEntity]);
+            inputRow.style.display = isVisible ? 'flex' : 'none';
+            if (isVisible) {
               const textInput = inputRow.querySelector('input');
               setTimeout(() => textInput?.focus(), 50);
             }
@@ -720,10 +761,12 @@ class DiscountsCard extends HTMLElement {
           const storeEntity = decodeURIComponent(confirmCustomBtn.dataset.store || '');
           const inputRow = this.shadowRoot.querySelector(`.custom-input-row[data-store="${encodeURIComponent(storeEntity)}"]`);
           const textInput = inputRow?.querySelector('input');
-          const val = textInput?.value?.trim();
+          const val = (textInput?.value || this._customInputValues[storeEntity] || '').trim();
           if (val) {
-            textInput.value = '';
-            inputRow.style.display = 'none';
+            if (textInput) textInput.value = '';
+            this._customInputValues[storeEntity] = '';
+            this._customInputVisibility[storeEntity] = false;
+            if (inputRow) inputRow.style.display = 'none';
             this._updateTodoQuantity(val, '', 'inc', null, storeEntity);
           }
           return;
@@ -1079,16 +1122,18 @@ class DiscountsCard extends HTMLElement {
       }
     });
 
-    const filterMode = this.config.filter?.filter_mode || 'none';
-    const filterCategories = this.config.filter?.filter_categories || [];
-
     const filteredOffers = rawOffers.filter((item) => {
       if (!item || typeof item !== 'object') return false;
       const { name, category, subtitle } = this._getItemProps(item);
+      const storeEntity = item._storeEntity || '';
+      const storeConf = this.config.entities.find((s) => s.entity === storeEntity);
+
+      const filterMode = storeConf?.filter_mode || 'none';
+      const filterCategories = storeConf?.filter_categories || [];
 
       if (filterMode === 'blacklist' && filterCategories.includes(category)) return false;
       if (filterMode === 'whitelist' && !filterCategories.includes(category)) return false;
-      if (this._filterTodoOnly && this._getItemTodoCount(item, item._storeEntity) <= 0) return false;
+      if (this._filterTodoOnly && this._getItemTodoCount(item, storeEntity) <= 0) return false;
       if (!this._filterQuery) return true;
 
       const q = this._filterQuery;
@@ -1118,6 +1163,8 @@ class DiscountsCard extends HTMLElement {
         const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
         const storeTitle = this._getStoreTitle(storeConf);
         const storeTodoCount = items.filter((item) => this._getItemTodoCount(item, storeEntity) > 0).length;
+        const isCustomInputVisible = Boolean(this._customInputVisibility[storeEntity]);
+        const customInputValue = this._customInputValues[storeEntity] || '';
 
         return `
           <div class="store-section" data-store="${encodeURIComponent(storeEntity)}">
@@ -1134,24 +1181,24 @@ class DiscountsCard extends HTMLElement {
                   `
             : ''
           }
-          ${this.config.todo?.todo_enabled
+              ${this.config.todo?.todo_enabled
             ? `
-            <button class="btn-store-action btn-add-custom-todo" title="${localize('default.add_custom_item', this._hass)}" data-store="${encodeURIComponent(storeEntity)}">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
-            </svg>
-            </button>
-            `
+                    <button class="btn-store-action btn-add-custom-todo" title="${localize('default.add_custom_item', this._hass)}" data-store="${encodeURIComponent(storeEntity)}">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
+                      </svg>
+                    </button>
+                  `
             : ''
           }
-            <span class="badge-count">
-              ${items.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
-            </span>
+                <span class="badge-count">
+                  ${items.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
+                </span>
               </div>
             </div>
 
-            <div class="custom-input-row" data-store="${encodeURIComponent(storeEntity)}" style="display: none;">
-              <input type="text" placeholder="${localize('default.add_custom_item_placeholder', this._hass)}..." class="custom-item-input" />
+            <div class="custom-input-row" data-store="${encodeURIComponent(storeEntity)}" style="display: ${isCustomInputVisible ? 'flex' : 'none'};">
+              <input type="text" placeholder="${localize('default.add_custom_item_placeholder', this._hass)}..." class="custom-item-input" value="${this._escapeHtml(customInputValue)}" />
               <button class="btn-confirm-custom-todo" data-store="${encodeURIComponent(storeEntity)}" title="${localize('default.add_custom_item', this._hass)}">
                 <svg viewBox="0 0 24 24" fill="currentColor">
                   <path d="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"/>
@@ -1166,9 +1213,13 @@ class DiscountsCard extends HTMLElement {
       .join('');
 
     contentContainer.querySelectorAll('.custom-item-input').forEach((input) => {
+      const row = input.closest('.custom-input-row');
+      const storeEntity = decodeURIComponent(row?.dataset.store || '');
+      input.addEventListener('input', (e) => {
+        this._customInputValues[storeEntity] = e.target.value;
+      });
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
-          const row = e.target.closest('.custom-input-row');
           const btn = row?.querySelector('.btn-confirm-custom-todo');
           btn?.click();
         }
@@ -1229,7 +1280,7 @@ class DiscountsCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
     if (!Array.isArray(this._config.entities)) {
-      this._config.entities = this._config.entity ? [{ entity: this._config.entity, title: '', default_selected: true }] : [];
+      this._config.entities = this._config.entity ? [{ entity: this._config.entity, title: '', default_selected: true, filter_mode: 'none', filter_categories: [] }] : [];
     }
     this.render();
   }
@@ -1250,11 +1301,11 @@ class DiscountsCardEditor extends HTMLElement {
     });
     this.dispatchEvent(event);
   }
+
   _moveStore(fromIndex, toIndex) {
     const entities = [...(this._config.entities || [])];
     if (toIndex < 0 || toIndex >= entities.length) return;
 
-    // Preserve open states across move
     const openStates = this._storeCards?.map((c) => c.itemPanel?.expanded ?? false) || [];
     const [movedState] = openStates.splice(fromIndex, 1);
     openStates.splice(toIndex, 0, movedState);
@@ -1265,6 +1316,7 @@ class DiscountsCardEditor extends HTMLElement {
     this._storeCards = null;
     this._valueChanged({ detail: { value: { entities } } });
   }
+
   _updateStore(index, key, val) {
     const entities = [...(this._config.entities || [])];
     entities[index] = { ...entities[index], [key]: val };
@@ -1274,7 +1326,7 @@ class DiscountsCardEditor extends HTMLElement {
   _addStore() {
     const entities = [
       ...(this._config.entities || []),
-      { entity: '', title: '', default_selected: true }
+      { entity: '', title: '', default_selected: true, filter_mode: 'none', filter_categories: [] }
     ];
     this._valueChanged({ detail: { value: { entities } } });
   }
@@ -1313,9 +1365,9 @@ class DiscountsCardEditor extends HTMLElement {
 
     const computeLabel = (schema) => {
       if (schema.name === 'title') return localize('config.title', this._hass);
+      if (schema.name === 'stores') return localize('default.stores', this._hass);
       return (
         localize(`config.${schema.name}`, this._hass) ||
-        localize(`config.filter.${schema.name}`, this._hass) ||
         localize(`config.todo.${schema.name}`, this._hass) ||
         schema.name
       );
@@ -1346,34 +1398,6 @@ class DiscountsCardEditor extends HTMLElement {
     this._formBottom.computeLabel = computeLabel;
     this._formBottom.schema = [
       {
-        name: 'filter',
-        type: 'expandable',
-        schema: [
-          {
-            name: 'filter_mode',
-            selector: {
-              select: {
-                options: [
-                  { value: 'none', label: localize('config.filter_modes.none', this._hass) },
-                  { value: 'blacklist', label: localize('config.filter_modes.blacklist', this._hass) },
-                  { value: 'whitelist', label: localize('config.filter_modes.whitelist', this._hass) }
-                ],
-                mode: 'dropdown'
-              }
-            }
-          },
-          {
-            name: 'filter_categories',
-            selector: {
-              select: {
-                multiple: true,
-                options: this._getCategories()
-              }
-            }
-          }
-        ]
-      },
-      {
         name: 'todo',
         type: 'expandable',
         schema: [
@@ -1398,6 +1422,7 @@ class DiscountsCardEditor extends HTMLElement {
       }
     ];
   }
+
   _handleDragStart(e, idx) {
     this._draggedIndex = idx;
     e.dataTransfer.effectAllowed = 'move';
@@ -1434,7 +1459,7 @@ class DiscountsCardEditor extends HTMLElement {
   _getStoreHeader(store, idx) {
     if (store.title && store.title.trim()) return store.title;
     const entState = this._hass?.states[store.entity];
-    return entState?.attributes?.friendly_name || `${localize("default.store")} ${idx + 1}`;
+    return entState?.attributes?.friendly_name || `${localize('default.stores', this._hass)} ${idx + 1}`;
   }
 
   _renderStoresEditor() {
@@ -1446,7 +1471,7 @@ class DiscountsCardEditor extends HTMLElement {
 
       this._mainStorePanel = document.createElement('ha-expansion-panel');
       this._mainStorePanel.setAttribute('outlined', '');
-      this._mainStorePanel.header = `${localize('config.stores', this._hass)} (${entities.length})`;
+      this._mainStorePanel.header = `${localize('default.stores', this._hass)} (${entities.length})`;
       this._mainStorePanel.expanded = this._mainExpanded ?? mainWasExpanded;
       this._mainStorePanel.style.cssText = '--expansion-panel-content-padding: 8px 12px 12px;';
       this._mainStorePanel.addEventListener('expanded-changed', (e) => {
@@ -1509,16 +1534,6 @@ class DiscountsCardEditor extends HTMLElement {
         const headerRight = document.createElement('div');
         headerRight.style.cssText = 'display: flex; align-items: center; gap: 2px; flex-shrink: 0;';
 
-        const delBtn = document.createElement('ha-icon-button');
-        delBtn.path = 'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z';
-        delBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px;';
-        delBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
-          this._storeCards = null;
-          this._removeStore(currentIdx);
-        });
-        // Up button
         const moveUpBtn = document.createElement('ha-icon-button');
         moveUpBtn.path = 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z';
         moveUpBtn.disabled = idx === 0;
@@ -1528,7 +1543,6 @@ class DiscountsCardEditor extends HTMLElement {
           this._moveStore(idx, idx - 1);
         });
 
-        // Down button
         const moveDownBtn = document.createElement('ha-icon-button');
         moveDownBtn.path = 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z';
         moveDownBtn.disabled = idx === entities.length - 1;
@@ -1538,10 +1552,20 @@ class DiscountsCardEditor extends HTMLElement {
           this._moveStore(idx, idx + 1);
         });
 
+        const delBtn = document.createElement('ha-icon-button');
+        delBtn.path = 'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z';
+        delBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px;';
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
+          this._storeCards = null;
+          this._removeStore(currentIdx);
+        });
+
         headerRight.appendChild(moveUpBtn);
         headerRight.appendChild(moveDownBtn);
-
         headerRight.appendChild(delBtn);
+
         headerEl.appendChild(headerLeft);
         headerEl.appendChild(headerRight);
         itemPanel.appendChild(headerEl);
@@ -1564,12 +1588,36 @@ class DiscountsCardEditor extends HTMLElement {
           {
             name: 'default_selected',
             selector: { boolean: {} }
+          },
+          {
+            name: 'filter_mode',
+            selector: {
+              select: {
+                options: [
+                  { value: 'none', label: localize('config.filter_modes.none', this._hass) },
+                  { value: 'blacklist', label: localize('config.filter_modes.blacklist', this._hass) },
+                  { value: 'whitelist', label: localize('config.filter_modes.whitelist', this._hass) }
+                ],
+                mode: 'dropdown'
+              }
+            }
+          },
+          {
+            name: 'filter_categories',
+            selector: {
+              select: {
+                multiple: true,
+                options: this._getStoreCategories(s.entity)
+              }
+            }
           }
         ];
         storeForm.computeLabel = (schema) => {
           if (schema.name === 'entity') return localize('config.entity', this._hass);
           if (schema.name === 'title') return localize('config.title', this._hass);
           if (schema.name === 'default_selected') return localize('config.default_selected', this._hass);
+          if (schema.name === 'filter_mode') return localize('config.filter_mode', this._hass) || localize('config.filter.filter_mode', this._hass);
+          if (schema.name === 'filter_categories') return localize('config.filter_categories', this._hass) || localize('config.filter.filter_categories', this._hass);
           return schema.name;
         };
 
@@ -1581,7 +1629,9 @@ class DiscountsCardEditor extends HTMLElement {
           currentEntities[currentIdx] = {
             entity: updated.entity || '',
             title: updated.title || '',
-            default_selected: updated.default_selected !== false
+            default_selected: updated.default_selected !== false,
+            filter_mode: updated.filter_mode || 'none',
+            filter_categories: updated.filter_categories || []
           };
           this._valueChanged({ detail: { value: { entities: currentEntities } } });
         });
@@ -1600,7 +1650,7 @@ class DiscountsCardEditor extends HTMLElement {
       addBtn.style.cssText = 'display: block; width: 100%; margin-top: 8px;';
       addBtn.innerHTML = `
         <ha-svg-icon slot="icon" path="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"></ha-svg-icon>
-        ${localize('config.add_store', this._hass)}
+        ${localize('default.add_store', this._hass)}
       `;
       addBtn.addEventListener('click', () => {
         this._storeCards = null;
@@ -1612,7 +1662,7 @@ class DiscountsCardEditor extends HTMLElement {
     }
 
     if (this._mainStorePanel) {
-      this._mainStorePanel.header = `${localize('config.stores', this._hass)} (${entities.length})`;
+      this._mainStorePanel.header = `${localize('default.stores', this._hass)} (${entities.length})`;
     }
 
     entities.forEach((s, idx) => {
@@ -1623,27 +1673,33 @@ class DiscountsCardEditor extends HTMLElement {
         item.storeForm.data = {
           entity: s.entity || '',
           title: s.title || '',
-          default_selected: s.default_selected !== false
+          default_selected: s.default_selected !== false,
+          filter_mode: s.filter_mode || 'none',
+          filter_categories: s.filter_categories || []
         };
       }
     });
   }
 
-  _getCategories() {
-    if (!this._hass || !this._config?.entities) return [];
+  _getStoreCategories(entityId) {
+    if (!this._hass || !entityId) return [];
+    const entity = this._hass.states[entityId];
+    const offers =
+      entity?.attributes?.discounts ||
+      entity?.attributes?.offers ||
+      entity?.attributes?.items ||
+      entity?.attributes?.products ||
+      entity?.attributes?.articles ||
+      entity?.attributes?.entries ||
+      entity?.attributes?.data ||
+      entity?.attributes?.coupons ||
+      (Array.isArray(entity?.attributes) ? entity.attributes : []) ||
+      [];
 
     const categories = new Set();
-    this._config.entities.forEach((s) => {
-      const entity = this._hass.states[s.entity];
-      const offers =
-        entity?.attributes?.discounts ||
-        entity?.attributes?.offers ||
-        entity?.attributes?.items ||
-        [];
-      offers.forEach((item) => {
-        const cat = item.category || item.category_name;
-        if (cat) categories.add(cat);
-      });
+    offers.forEach((item) => {
+      const cat = item.category || item.category_name || item.section;
+      if (cat) categories.add(cat);
     });
 
     return [...categories].sort().map((cat) => ({ value: cat, label: cat }));
