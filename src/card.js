@@ -1261,7 +1261,7 @@ class DiscountsCard extends HTMLElement {
         }, 0);
       }
     }
-
+  }
   _updateHeaderAndCategoryBadges() {
     let rawOffers = [];
     this.config.entities.forEach((s, idx) => {

@@ -187,6 +187,7 @@ class DiscountsCard extends HTMLElement {
     this._customInputVisibility = {};
     this._customInputValues = {};
     this._focusedCustomInputStore = null;
+    this._customInputSelections = {};
 
     this._onDocClick = (e) => {
       if (!this._menuOpen) return;
@@ -915,6 +916,7 @@ class DiscountsCard extends HTMLElement {
           if (val) {
             if (textInput) textInput.value = '';
             this._customInputValues[storeEntity] = '';
+            this._customInputSelections[storeEntity] = null;
             this._focusedCustomInputStore = storeEntity;
             this._updateTodoQuantity(val, '', 'inc', null, storeEntity);
           }
@@ -1365,12 +1367,23 @@ class DiscountsCard extends HTMLElement {
       const row = input.closest('.custom-input-row');
       const storeEntity = decodeURIComponent(row?.dataset.store || '');
 
+      const saveCaret = (e) => {
+        this._customInputSelections[storeEntity] = {
+          start: e.target.selectionStart,
+          end: e.target.selectionEnd
+        };
+      };
+
       input.addEventListener('focus', () => {
         this._focusedCustomInputStore = storeEntity;
       });
       input.addEventListener('input', (e) => {
         this._customInputValues[storeEntity] = e.target.value;
+        saveCaret(e);
       });
+      input.addEventListener('keyup', saveCaret);
+      input.addEventListener('click', saveCaret);
+      input.addEventListener('select', saveCaret);
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const btn = row?.querySelector('.btn-confirm-custom-todo');
@@ -1379,29 +1392,25 @@ class DiscountsCard extends HTMLElement {
       });
     });
 
-    // Restore focus after DOM update:
     if (this._focusedCustomInputStore && this._customInputVisibility[this._focusedCustomInputStore]) {
       const activeRow = contentContainer.querySelector(
         `.custom-input-row[data-store="${encodeURIComponent(this._focusedCustomInputStore)}"]`
       );
       const activeInput = activeRow?.querySelector('input');
       if (activeInput) {
-        setTimeout(() => activeInput.focus(), 0);
+        setTimeout(() => {
+          activeInput.focus();
+          const sel = this._customInputSelections[this._focusedCustomInputStore];
+          if (sel && typeof sel.start === 'number' && typeof sel.end === 'number') {
+            activeInput.setSelectionRange(sel.start, sel.end);
+          } else {
+            const len = activeInput.value.length;
+            activeInput.setSelectionRange(len, len);
+          }
+        }, 0);
       }
     }
-
-    if (this.config.collapsible_categories) {
-      contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
-        categoryGroup.addEventListener('toggle', () => {
-          if (this._filterQuery.length > 0 || this._filterTodoOnly) return;
-          const category = decodeURIComponent(categoryGroup.dataset.category);
-          const store = decodeURIComponent(categoryGroup.dataset.store || '');
-          this._categoryOpenState[`${store}_${category}`] = categoryGroup.open;
-        });
-      });
-    }
   }
-
   _updateHeaderAndCategoryBadges() {
     let rawOffers = [];
     this.config.entities.forEach((s, idx) => {
