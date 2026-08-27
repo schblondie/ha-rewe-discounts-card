@@ -91,10 +91,10 @@ export function normalizeOffer(item, storeEntity, hass = null) {
   } else if (!subtitle && item.brand && item.brand !== name) {
     subtitle = item.brand;
   }
-  const validInfo = item.valid_until || item.valid_date || item.valid_from || '';
-  if (validInfo) {
-    subtitle = subtitle ? `${subtitle}   ${validInfo}` : validInfo;
-  }
+  // const validInfo = item.valid_until || item.valid_date || item.valid_from || '';
+  // if (validInfo) {
+  //   subtitle = subtitle ? `${subtitle}   ${validInfo}` : validInfo;
+  // }
   const category =
     item.category ||
     item.category_name ||

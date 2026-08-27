@@ -679,7 +679,7 @@ class DiscountsCard extends HTMLElement {
     if (headerBadge) {
       const offersLabel = localize('default.offers', this._hass);
       headerBadge.innerHTML = `
-        ${rawOffers.length} ${offersLabel}${this.config.todo?.todo_enabled && totalTodoCount > 0 ? ` <span class="badge-todo-total">(${totalTodoCount}  )</span>` : ''}
+        ${rawOffers.length} ${offersLabel}${this.config.todo?.todo_enabled && totalTodoCount > 0 ? ` <span class="badge-todo-total">(${totalTodoCount} 🛒)</span>` : ''}
       `;
     }
     const storeSections = this.shadowRoot.querySelectorAll('.store-section');
@@ -695,7 +695,7 @@ class DiscountsCard extends HTMLElement {
       const badgeEl = section.querySelector('.store-header-actions .badge-count');
       if (badgeEl) {
         badgeEl.innerHTML = `
-          ${allItems.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount}  )</span>` : ''}
+          ${allItems.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
         `;
       }
       const clearBtn = section.querySelector('.btn-clear-store-todo');
@@ -710,7 +710,7 @@ class DiscountsCard extends HTMLElement {
       const totalItems = group.querySelectorAll('.offer-item').length;
       const activeTodoItems = group.querySelectorAll('.todo-count-badge').length;
       badge.innerHTML = `
-        ${totalItems}${this.config.todo?.todo_enabled && activeTodoItems > 0 ? ` <span class="badge-todo-total">(${activeTodoItems}  )</span>` : ''}
+        ${totalItems}${this.config.todo?.todo_enabled && activeTodoItems > 0 ? ` <span class="badge-todo-total">(${activeTodoItems} 🛒)</span>` : ''}
       `;
     });
   }
