@@ -14,7 +14,7 @@ export function localize(key, hass) {
 export function formatPrice(val) {
   if (val === null || val === undefined || val === '') return '';
   const str = String(val).trim();
-  return /[\€\$\£]/.test(str) ? str : `${str} €`;
+  return /[\ ]/.test(str) ? str : `${str}`;
 }
 
 export function parseMultiplier(str) {
@@ -29,7 +29,6 @@ export function detectStoreLabel(entityId = '', hass = null) {
   const ent = (entityId || '').toLowerCase();
   const friendlyName = (hass?.states?.[entityId]?.attributes?.friendly_name || '').toLowerCase();
   const source = `${ent} ${friendlyName}`;
-
   if (source.includes('aldi')) return 'ALDI';
   if (source.includes('edeka')) return 'EDEKA';
   if (source.includes('lidl')) return 'LIDL';
@@ -75,7 +74,6 @@ export function normalizeOffer(item, storeEntity, hass = null) {
     item.brand ||
     item.article ||
     localize('default.offer', hass);
-
   const image =
     item.picture_link ||
     item.picture ||
@@ -83,10 +81,8 @@ export function normalizeOffer(item, storeEntity, hass = null) {
     item.image ||
     item.photo ||
     '';
-
   const price = item.price || item.current_price || '';
   const oldPrice = item.old_price || item.regular_price || '';
-
   let subtitle = item.subtitle || item.description || item.base_price || '';
   if (!subtitle && item.packaging) {
     subtitle = item.packaging.split('\n')[0];
@@ -95,18 +91,15 @@ export function normalizeOffer(item, storeEntity, hass = null) {
   } else if (!subtitle && item.brand && item.brand !== name) {
     subtitle = item.brand;
   }
-
   const validInfo = item.valid_until || item.valid_date || item.valid_from || '';
   if (validInfo) {
-    subtitle = subtitle ? `${subtitle} • ${validInfo}` : validInfo;
+    subtitle = subtitle ? `${subtitle}   ${validInfo}` : validInfo;
   }
-
   const category =
     item.category ||
     item.category_name ||
     item.section ||
     localize('default.other_offers', hass);
-
   return {
     ...item,
     _storeEntity: storeEntity,

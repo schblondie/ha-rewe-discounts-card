@@ -2,7 +2,6 @@
  * Discounts Card for Home Assistant Lovelace
  * Repository: schblondie/discounts-card
  */
-
 import { DiscountsCardEditor } from './editor.js';
 import {
   localize,
@@ -30,25 +29,20 @@ class DiscountsCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-
     this._filterQuery = '';
     this._filterTodoOnly = false;
     this._categoryOpenState = {};
     this._hasSkeleton = false;
     this._menuOpen = false;
     this._selectedStoreIndices = new Set([0]);
-
     this._rawOffersCache = {};
     this._todoItemCounts = {};
     this._customStoreTodoItems = {};
-
     this._customInputVisibility = {};
     this._customInputValues = {};
     this._customInputSelections = {};
     this._focusedCustomInputStore = null;
-
     this._debouncedOffersUpdate = debounce(() => this._updateOffersList(), 120);
-
     this._onDocClick = (e) => {
       if (!this._menuOpen) return;
       const path = e.composedPath();
@@ -88,7 +82,6 @@ class DiscountsCard extends HTMLElement {
         e.includes('discount') ||
         e.includes('offer')
     ) || [];
-
     const selectedEntities = supermarketEntities.slice(0, 3).map((ent) => ({
       entity: ent,
       title: '',
@@ -96,7 +89,6 @@ class DiscountsCard extends HTMLElement {
       filter_mode: 'none',
       filter_categories: []
     }));
-
     return {
       title: '',
       entities: selectedEntities.length > 0 ? selectedEntities : [{ entity: '', title: '', default_selected: true, filter_mode: 'none', filter_categories: [] }],
@@ -117,7 +109,6 @@ class DiscountsCard extends HTMLElement {
   setConfig(config) {
     const showConfig = config.show || {};
     const todoConfig = config.todo || {};
-
     let normalizedEntities = [];
     if (Array.isArray(config.entities)) {
       normalizedEntities = config.entities.map((item) => {
@@ -135,14 +126,12 @@ class DiscountsCard extends HTMLElement {
     } else if (config.entity) {
       normalizedEntities = [{ entity: config.entity, title: config.title || '', default_selected: true, filter_mode: 'none', filter_categories: [] }];
     }
-
     const priceSetting =
       todoConfig.todo_price ??
       config.todo_price ??
       config.price ??
       showConfig.price ??
       false;
-
     this.config = {
       title: config.title || '',
       show_images: true,
@@ -159,17 +148,14 @@ class DiscountsCard extends HTMLElement {
         category_layout: todoConfig.category_layout ?? config.todo_category_layout ?? 'keep'
       }
     };
-
     const preselected = [];
     this.config.entities.forEach((s, idx) => {
       if (s.default_selected !== false) preselected.push(idx);
     });
     this._selectedStoreIndices = new Set(preselected.length > 0 ? preselected : [0]);
-
     if (this._filterTodoOnly === false && this.config.todo?.only_show_todo) {
       this._filterTodoOnly = true;
     }
-
     this._hasSkeleton = false;
     this._rawOffersCache = {};
     if (this._hass) this.render();
@@ -178,12 +164,10 @@ class DiscountsCard extends HTMLElement {
   set hass(hass) {
     const oldHass = this._hass;
     this._hass = hass;
-
     if (!this._hasSkeleton) {
       this.render();
       return;
     }
-
     if (!oldHass) {
       this._invalidateOffersCache();
       this._fetchTodoCounts().then(() => {
@@ -192,13 +176,10 @@ class DiscountsCard extends HTMLElement {
       });
       return;
     }
-
     const todoEntity = this.config?.todo?.todo_entity;
     const storeEntities = (this.config?.entities || []).map((e) => e.entity);
-
     const offersChanged = storeEntities.some((id) => oldHass.states[id] !== hass.states[id]);
     const todoChanged = todoEntity ? oldHass.states[todoEntity] !== hass.states[todoEntity] : true;
-
     if (offersChanged) {
       this._invalidateOffersCache();
       this._fetchTodoCounts().then(() => {
@@ -245,10 +226,8 @@ class DiscountsCard extends HTMLElement {
     let confirmMessage = localize('default.remove_all_from_shopping_list', this._hass);
     confirmMessage = confirmMessage.replace('{storeTitle}', `"${storeTitle}"`);
     if (!window.confirm(confirmMessage)) return;
-
     const storeOffers = this._getRawOffersForEntity(storeEntity);
     const customOffers = this._customStoreTodoItems?.[storeEntity] || [];
-
     await clearStoreTodoItems(this._hass, this.config, storeEntity, storeOffers, customOffers);
     await this._fetchTodoCounts();
     this._updateOffersList();
@@ -257,21 +236,16 @@ class DiscountsCard extends HTMLElement {
   _patchTodoElementsOnly() {
     const root = this.shadowRoot;
     if (!root) return;
-
     this._updateHeaderAndCategoryBadges();
-
     root.querySelectorAll('.offer-item').forEach((el) => {
       const todoContainer = el.querySelector('.todo-btn-container');
       if (!todoContainer) return;
-
       const name = decodeURIComponent(todoContainer.dataset.item || '');
       const price = decodeURIComponent(todoContainer.dataset.price || '');
       const entityId = decodeURIComponent(todoContainer.dataset.entity || '');
-
       const count = this._getItemTodoCount({ _name: name, _displayPrice: price }, entityId);
       todoContainer.innerHTML = renderTodoControlsHtml(name, price, count, entityId, this._hass);
     });
-
     if (this._filterTodoOnly) {
       this._updateOffersList();
     }
@@ -287,7 +261,6 @@ class DiscountsCard extends HTMLElement {
 
   async render() {
     if (!this._hass || !this.config) return;
-
     if (!this.config.entities || this.config.entities.length === 0) {
       this._hasSkeleton = false;
       this.shadowRoot.innerHTML = `
@@ -297,12 +270,10 @@ class DiscountsCard extends HTMLElement {
       `;
       return;
     }
-
     if (!this._hasSkeleton) {
       this._renderSkeleton();
       this._hasSkeleton = true;
     }
-
     await this._fetchTodoCounts();
     this._updateHeaderTitle();
     this._updateOffersList();
@@ -315,11 +286,9 @@ class DiscountsCard extends HTMLElement {
       this._filterQuery,
       this._filterTodoOnly
     );
-
     if (this.config.enable_search) {
       const searchInput = this.shadowRoot.querySelector('.search-input');
       const clearBtn = this.shadowRoot.querySelector('.btn-clear-search');
-
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           this._filterQuery = (e.target.value || '').toLowerCase().trim();
@@ -327,7 +296,6 @@ class DiscountsCard extends HTMLElement {
           this._debouncedOffersUpdate();
         });
       }
-
       if (clearBtn) {
         clearBtn.addEventListener('click', () => {
           this._filterQuery = '';
@@ -337,7 +305,6 @@ class DiscountsCard extends HTMLElement {
         });
       }
     }
-
     if (this.config.todo?.todo_enabled) {
       const filterBtn = this.shadowRoot.querySelector('.btn-filter-todo');
       if (filterBtn) {
@@ -348,7 +315,6 @@ class DiscountsCard extends HTMLElement {
         });
       }
     }
-
     const burgerBtn = this.shadowRoot.querySelector('.btn-burger-menu');
     if (burgerBtn) {
       burgerBtn.addEventListener('click', (e) => {
@@ -357,7 +323,6 @@ class DiscountsCard extends HTMLElement {
         this._renderDropdownMenu();
       });
     }
-
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     if (contentContainer) {
       contentContainer.addEventListener(
@@ -370,15 +335,12 @@ class DiscountsCard extends HTMLElement {
         },
         true
       );
-
-      // Delegated input event handlers for mobile keyboard & cursor preservation
       contentContainer.addEventListener('focusin', (e) => {
         if (e.target?.classList?.contains('custom-item-input')) {
           const row = e.target.closest('.custom-input-row');
           this._focusedCustomInputStore = decodeURIComponent(row?.dataset.store || '');
         }
       });
-
       const handleCaret = (e) => {
         if (e.target?.classList?.contains('custom-item-input')) {
           const row = e.target.closest('.custom-input-row');
@@ -390,12 +352,10 @@ class DiscountsCard extends HTMLElement {
           };
         }
       };
-
       contentContainer.addEventListener('input', handleCaret);
       contentContainer.addEventListener('keyup', handleCaret);
       contentContainer.addEventListener('click', handleCaret);
       contentContainer.addEventListener('select', handleCaret);
-
       contentContainer.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.target?.classList?.contains('custom-item-input')) {
           const row = e.target.closest('.custom-input-row');
@@ -403,8 +363,6 @@ class DiscountsCard extends HTMLElement {
           btn?.click();
         }
       });
-
-      // Delegated button actions
       contentContainer.addEventListener('click', (e) => {
         const addBtn = e.target.closest('.btn-add-todo');
         const decBtn = e.target.closest('.btn-dec-todo');
@@ -412,14 +370,12 @@ class DiscountsCard extends HTMLElement {
         const clearStoreBtn = e.target.closest('.btn-clear-store-todo');
         const addCustomBtn = e.target.closest('.btn-add-custom-todo');
         const confirmCustomBtn = e.target.closest('.btn-confirm-custom-todo');
-
         if (clearStoreBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(clearStoreBtn.dataset.store || '');
           this._clearStoreTodoItems(storeEntity);
           return;
         }
-
         if (addCustomBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(addCustomBtn.dataset.store || '');
@@ -435,7 +391,6 @@ class DiscountsCard extends HTMLElement {
           }
           return;
         }
-
         if (confirmCustomBtn) {
           e.stopPropagation();
           const storeEntity = decodeURIComponent(confirmCustomBtn.dataset.store || '');
@@ -451,7 +406,6 @@ class DiscountsCard extends HTMLElement {
           }
           return;
         }
-
         if (addBtn) {
           e.stopPropagation();
           const itemName = decodeURIComponent(addBtn.dataset.item);
@@ -462,7 +416,6 @@ class DiscountsCard extends HTMLElement {
           this._updateTodoQuantity(itemName, itemPrice, 'inc', null, entityId);
           return;
         }
-
         if (decBtn) {
           e.stopPropagation();
           const itemName = decodeURIComponent(decBtn.dataset.item);
@@ -471,18 +424,15 @@ class DiscountsCard extends HTMLElement {
           this._updateTodoQuantity(itemName, itemPrice, 'dec', null, entityId);
           return;
         }
-
         if (countBadge) {
           e.stopPropagation();
           const itemName = decodeURIComponent(countBadge.dataset.item);
           const itemPrice = decodeURIComponent(countBadge.dataset.price || '');
           const entityId = decodeURIComponent(countBadge.dataset.entity || '');
           const currentCount = parseInt(countBadge.dataset.count, 10) || 1;
-
           let promptLabel = localize('default.quantity_prompt', this._hass);
           promptLabel = promptLabel.replace('{item}', itemName);
           const input = window.prompt(promptLabel, currentCount);
-
           if (input !== null) {
             const parsed = parseInt(input.trim(), 10);
             if (!isNaN(parsed)) {
@@ -517,12 +467,9 @@ class DiscountsCard extends HTMLElement {
   _renderDropdownMenu() {
     const dropdown = this.shadowRoot.querySelector('.dropdown-menu');
     if (!dropdown) return;
-
     dropdown.classList.toggle('open', this._menuOpen);
     if (!this._menuOpen) return;
-
     const allSelected = this._selectedStoreIndices.size === this.config.entities.length;
-
     dropdown.innerHTML = `
       <div class="dropdown-item ${allSelected ? 'active' : ''}" data-index="all">
         <span class="menu-icon ${allSelected ? 'check-icon' : 'menu-icon-spacer'}">
@@ -545,7 +492,6 @@ class DiscountsCard extends HTMLElement {
         })
         .join('')}
     `;
-
     dropdown.querySelectorAll('.dropdown-item').forEach((item) => {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -559,20 +505,16 @@ class DiscountsCard extends HTMLElement {
   _updateHeaderTitle() {
     const titleEl = this.shadowRoot.querySelector('.card-title');
     if (!titleEl) return;
-
     const totalStores = (this.config.entities || []).length;
     const selectedCount = this._selectedStoreIndices.size;
-
     if (this._filterQuery.length > 0) {
       titleEl.textContent = `${localize('default.search_results', this._hass)} (${selectedCount === totalStores ? localize('default.all_stores', this._hass) : selectedCount + ' ' + localize('default.stores', this._hass)})`;
       return;
     }
-
     if (this.config.title && this.config.title.trim() !== '') {
       titleEl.textContent = this.config.title;
       return;
     }
-
     if (totalStores === 1 || selectedCount === 1) {
       const singleIdx = Array.from(this._selectedStoreIndices)[0] || 0;
       titleEl.textContent = this._getStoreTitle(this.config.entities[singleIdx]);
@@ -585,7 +527,6 @@ class DiscountsCard extends HTMLElement {
 
   _getRawOffersForEntity(entityId) {
     if (this._rawOffersCache[entityId]) return this._rawOffersCache[entityId];
-
     const entity = this._hass?.states[entityId];
     if (!entity) return [];
     const offers =
@@ -599,7 +540,6 @@ class DiscountsCard extends HTMLElement {
       entity.attributes.coupons ||
       (Array.isArray(entity.attributes) ? entity.attributes : []) ||
       [];
-
     const normalized = offers.map((o) => normalizeOffer(o, entityId, this._hass));
     this._rawOffersCache[entityId] = normalized;
     return normalized;
@@ -608,12 +548,9 @@ class DiscountsCard extends HTMLElement {
   _updateOffersList() {
     const contentContainer = this.shadowRoot.querySelector('.card-content');
     if (!contentContainer) return;
-
     this._updateHeaderTitle();
-
     const isSearchMode = this._filterQuery.length > 0;
     let rawOffers = [];
-
     this.config.entities.forEach((s, idx) => {
       if (this._selectedStoreIndices.has(idx)) {
         const storeOffers = this._getRawOffersForEntity(s.entity);
@@ -621,37 +558,29 @@ class DiscountsCard extends HTMLElement {
         rawOffers.push(...storeOffers, ...customItems);
       }
     });
-
     const filteredOffers = rawOffers.filter((item) => {
       if (!item) return false;
       const storeEntity = item._storeEntity || '';
       const storeConf = this.config.entities.find((s) => s.entity === storeEntity);
-
       const filterMode = storeConf?.filter_mode || 'none';
       const filterCategories = storeConf?.filter_categories || [];
-
       if (filterMode === 'blacklist' && filterCategories.includes(item._category)) return false;
       if (filterMode === 'whitelist' && !filterCategories.includes(item._category)) return false;
       if (this._filterTodoOnly && this._getItemTodoCount(item, storeEntity) <= 0) return false;
       if (!this._filterQuery) return true;
-
       return item._searchKey.includes(this._filterQuery);
     });
-
     this._updateHeaderAndCategoryBadges();
-
     if (filteredOffers.length === 0) {
       contentContainer.innerHTML = `<div class="no-results">${localize('default.no_offers', this._hass)}</div>`;
       return;
     }
-
     const storeGrouped = {};
     filteredOffers.forEach((item) => {
       const ent = item._storeEntity || '';
       if (!storeGrouped[ent]) storeGrouped[ent] = [];
       storeGrouped[ent].push(item);
     });
-
     contentContainer.innerHTML = Object.entries(storeGrouped)
       .map(([storeEntity, items]) => {
         const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
@@ -659,7 +588,6 @@ class DiscountsCard extends HTMLElement {
         const storeTodoCount = items.filter((item) => this._getItemTodoCount(item, storeEntity) > 0).length;
         const isCustomInputVisible = Boolean(this._customInputVisibility[storeEntity]);
         const customInputValue = this._customInputValues[storeEntity] || '';
-
         return `
           <div class="store-section" data-store="${encodeURIComponent(storeEntity)}">
             <div class="store-section-header">
@@ -682,18 +610,16 @@ class DiscountsCard extends HTMLElement {
             : ''
           }
                 <span class="badge-count">
-                  ${items.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
+                  ${items.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount}  )</span>` : ''}
                 </span>
               </div>
             </div>
-
             <div class="custom-input-row" data-store="${encodeURIComponent(storeEntity)}" style="display: ${isCustomInputVisible ? 'flex' : 'none'};">
               <input type="text" placeholder="${localize('default.add_custom_item_placeholder', this._hass)}..." class="custom-item-input" value="${escapeHtml(customInputValue)}" />
               <button class="btn-confirm-custom-todo" data-store="${encodeURIComponent(storeEntity)}" title="${localize('default.add_custom_item', this._hass)}">
                 ${renderSvg(ICONS.check)}
               </button>
             </div>
-
             ${renderCategoryGroups(
             items,
             storeEntity,
@@ -708,7 +634,6 @@ class DiscountsCard extends HTMLElement {
         `;
       })
       .join('');
-
     if (this._focusedCustomInputStore && this._customInputVisibility[this._focusedCustomInputStore]) {
       const activeRow = contentContainer.querySelector(
         `.custom-input-row[data-store="${encodeURIComponent(this._focusedCustomInputStore)}"]`
@@ -727,7 +652,6 @@ class DiscountsCard extends HTMLElement {
         }, 0);
       }
     }
-
     if (this.config.collapsible_categories) {
       contentContainer.querySelectorAll('.category-group').forEach((categoryGroup) => {
         categoryGroup.addEventListener('toggle', () => {
@@ -742,7 +666,6 @@ class DiscountsCard extends HTMLElement {
 
   _updateHeaderAndCategoryBadges() {
     this._updateHeaderTitle();
-
     let rawOffers = [];
     this.config.entities.forEach((s, idx) => {
       if (this._selectedStoreIndices.has(idx)) {
@@ -751,52 +674,43 @@ class DiscountsCard extends HTMLElement {
         rawOffers.push(...customItems);
       }
     });
-
     const totalTodoCount = rawOffers.filter((item) => this._getItemTodoCount(item, item._storeEntity) > 0).length;
     const headerBadge = this.shadowRoot.querySelector('.header-badge');
     if (headerBadge) {
       const offersLabel = localize('default.offers', this._hass);
       headerBadge.innerHTML = `
-        ${rawOffers.length} ${offersLabel}${this.config.todo?.todo_enabled && totalTodoCount > 0 ? ` <span class="badge-todo-total">(${totalTodoCount} 🛒)</span>` : ''}
+        ${rawOffers.length} ${offersLabel}${this.config.todo?.todo_enabled && totalTodoCount > 0 ? ` <span class="badge-todo-total">(${totalTodoCount}  )</span>` : ''}
       `;
     }
-
     const storeSections = this.shadowRoot.querySelectorAll('.store-section');
     storeSections.forEach((section) => {
       const storeEntity = decodeURIComponent(section.dataset.store || '');
       const storeConf = this.config.entities.find((s) => s.entity === storeEntity) || { entity: storeEntity };
-
       const titleEl = section.querySelector('.store-section-title');
       if (titleEl) titleEl.textContent = this._getStoreTitle(storeConf);
-
       const storeOffers = this._getRawOffersForEntity(storeEntity);
       const customItems = this._customStoreTodoItems?.[storeEntity] || [];
       const allItems = [...storeOffers, ...customItems];
       const storeTodoCount = allItems.filter((item) => this._getItemTodoCount(item, storeEntity) > 0).length;
-
       const badgeEl = section.querySelector('.store-header-actions .badge-count');
       if (badgeEl) {
         badgeEl.innerHTML = `
-          ${allItems.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount} 🛒)</span>` : ''}
+          ${allItems.length}${this.config.todo?.todo_enabled && storeTodoCount > 0 ? ` <span class="badge-todo-total">(${storeTodoCount}  )</span>` : ''}
         `;
       }
-
       const clearBtn = section.querySelector('.btn-clear-store-todo');
       if (clearBtn) {
         clearBtn.style.display = (this.config.todo?.todo_enabled && storeTodoCount > 0) ? '' : 'none';
       }
     });
-
     const categoryGroups = this.shadowRoot.querySelectorAll('.category-group');
     categoryGroups.forEach((group) => {
       const badge = group.querySelector('summary .badge-count, .category-title-static .badge-count');
       if (!badge) return;
-
       const totalItems = group.querySelectorAll('.offer-item').length;
       const activeTodoItems = group.querySelectorAll('.todo-count-badge').length;
-
       badge.innerHTML = `
-        ${totalItems}${this.config.todo?.todo_enabled && activeTodoItems > 0 ? ` <span class="badge-todo-total">(${activeTodoItems} 🛒)</span>` : ''}
+        ${totalItems}${this.config.todo?.todo_enabled && activeTodoItems > 0 ? ` <span class="badge-todo-total">(${activeTodoItems}  )</span>` : ''}
       `;
     });
   }
@@ -812,7 +726,6 @@ if (!customElements.get('discounts-card-editor')) {
 if (!customElements.get('discounts-card')) {
   customElements.define('discounts-card', DiscountsCard);
 }
-
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'discounts-card',

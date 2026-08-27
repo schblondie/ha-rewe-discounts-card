@@ -19,7 +19,6 @@ export class DiscountsCardEditor extends HTMLElement {
   _valueChanged(ev) {
     if (!this._config || !this._hass) return;
     const newConfig = { ...this._config, ...ev.detail.value };
-
     const event = new CustomEvent('config-changed', {
       detail: { config: newConfig },
       bubbles: true,
@@ -31,12 +30,10 @@ export class DiscountsCardEditor extends HTMLElement {
   _moveStore(fromIndex, toIndex) {
     const entities = [...(this._config.entities || [])];
     if (toIndex < 0 || toIndex >= entities.length) return;
-
     const openStates = this._storeCards?.map((c) => c.itemPanel?.expanded ?? false) || [];
     const [movedState] = openStates.splice(fromIndex, 1);
     openStates.splice(toIndex, 0, movedState);
     this._pendingOpenStates = openStates;
-
     const [moved] = entities.splice(fromIndex, 1);
     entities.splice(toIndex, 0, moved);
     this._storeCards = null;
@@ -110,23 +107,19 @@ export class DiscountsCardEditor extends HTMLElement {
       entity?.attributes?.coupons ||
       (Array.isArray(entity?.attributes) ? entity.attributes : []) ||
       [];
-
     const categories = new Set();
     offers.forEach((item) => {
       const cat = item.category || item.category_name || item.section;
       if (cat) categories.add(cat);
     });
-
     return [...categories].sort().map((cat) => ({ value: cat, label: cat }));
   }
 
   _renderStoresEditor() {
     const entities = this._config.entities || [];
     const mainWasExpanded = this._mainStorePanel ? this._mainStorePanel.expanded : true;
-
     if (!this._mainStorePanel || this._storeCards?.length !== entities.length) {
       this._storesContainer.innerHTML = '';
-
       this._mainStorePanel = document.createElement('ha-expansion-panel');
       this._mainStorePanel.setAttribute('outlined', '');
       this._mainStorePanel.header = `${localize('default.stores', this._hass)} (${entities.length})`;
@@ -135,13 +128,10 @@ export class DiscountsCardEditor extends HTMLElement {
       this._mainStorePanel.addEventListener('expanded-changed', (e) => {
         this._mainExpanded = e.detail?.expanded ?? this._mainStorePanel.expanded;
       });
-
       this._listEl = document.createElement('div');
       this._listEl.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
       this._mainStorePanel.appendChild(this._listEl);
-
       this._storeCards = [];
-
       entities.forEach((s, idx) => {
         const itemPanel = document.createElement('ha-expansion-panel');
         itemPanel.setAttribute('outlined', '');
@@ -154,7 +144,6 @@ export class DiscountsCardEditor extends HTMLElement {
           border-radius: 8px;
           transition: opacity 0.15s ease, border-top 0.15s ease;
         `;
-
         itemPanel.addEventListener('dragstart', (e) => {
           if (['INPUT', 'SELECT', 'HA-FORM', 'BUTTON'].includes(e.target.tagName)) {
             e.preventDefault();
@@ -170,28 +159,21 @@ export class DiscountsCardEditor extends HTMLElement {
           this._handleDrop(e, currentIdx);
         });
         itemPanel.addEventListener('dragend', (e) => this._handleDragEnd(e));
-
         const headerEl = document.createElement('div');
         headerEl.slot = 'header';
         headerEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; min-height: 48px;';
-
         const headerLeft = document.createElement('div');
         headerLeft.style.cssText = 'display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;';
-
         const storeIcon = document.createElement('ha-svg-icon');
         storeIcon.path = 'M19,6H17V4A2,2 0 0,0 15,2H9A2,2 0 0,0 7,4V6H5A2,2 0 0,0 3,8V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V8A2,2 0 0,0 19,6M9,4H15V6H9V4M19,19H5V8H19V19Z';
         storeIcon.style.cssText = 'width: 20px; height: 20px; color: var(--secondary-text-color); flex-shrink: 0;';
-
         const titleText = document.createElement('div');
         titleText.style.cssText = 'font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
         titleText.textContent = this._getStoreHeader(s, idx);
-
         headerLeft.appendChild(storeIcon);
         headerLeft.appendChild(titleText);
-
         const headerRight = document.createElement('div');
         headerRight.style.cssText = 'display: flex; align-items: center; gap: 2px; flex-shrink: 0;';
-
         const moveUpBtn = document.createElement('ha-icon-button');
         moveUpBtn.path = 'M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z';
         moveUpBtn.disabled = idx === 0;
@@ -200,7 +182,6 @@ export class DiscountsCardEditor extends HTMLElement {
           e.stopPropagation();
           this._moveStore(idx, idx - 1);
         });
-
         const moveDownBtn = document.createElement('ha-icon-button');
         moveDownBtn.path = 'M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z';
         moveDownBtn.disabled = idx === entities.length - 1;
@@ -209,7 +190,6 @@ export class DiscountsCardEditor extends HTMLElement {
           e.stopPropagation();
           this._moveStore(idx, idx + 1);
         });
-
         const delBtn = document.createElement('ha-icon-button');
         delBtn.path = 'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z';
         delBtn.style.cssText = '--mdc-icon-button-size: 32px; --mdc-icon-size: 18px;';
@@ -219,18 +199,14 @@ export class DiscountsCardEditor extends HTMLElement {
           this._storeCards = null;
           this._removeStore(currentIdx);
         });
-
         headerRight.appendChild(moveUpBtn);
         headerRight.appendChild(moveDownBtn);
         headerRight.appendChild(delBtn);
-
         headerEl.appendChild(headerLeft);
         headerEl.appendChild(headerRight);
         itemPanel.appendChild(headerEl);
-
         const content = document.createElement('div');
         content.style.cssText = 'padding-top: 8px; display: flex; flex-direction: column; gap: 8px;';
-
         const storeForm = document.createElement('ha-form');
         storeForm.hass = this._hass;
         storeForm.schema = [
@@ -278,7 +254,6 @@ export class DiscountsCardEditor extends HTMLElement {
           if (schema.name === 'filter_categories') return localize('config.filter_categories', this._hass) || localize('config.filter.filter_categories', this._hass);
           return schema.name;
         };
-
         storeForm.addEventListener('value-changed', (ev) => {
           ev.stopPropagation();
           const currentIdx = this._storeCards.findIndex((c) => c.itemPanel === itemPanel);
@@ -293,16 +268,12 @@ export class DiscountsCardEditor extends HTMLElement {
           };
           this._valueChanged({ detail: { value: { entities: currentEntities } } });
         });
-
         content.appendChild(storeForm);
         itemPanel.appendChild(content);
-
         this._listEl.appendChild(itemPanel);
         this._storeCards.push({ itemPanel, titleText, storeForm });
       });
-
       this._pendingOpenStates = null;
-
       const addBtn = document.createElement('ha-button');
       addBtn.setAttribute('outlined', '');
       addBtn.style.cssText = 'display: block; width: 100%; margin-top: 8px;';
@@ -315,14 +286,11 @@ export class DiscountsCardEditor extends HTMLElement {
         this._addStore();
       });
       this._mainStorePanel.appendChild(addBtn);
-
       this._storesContainer.appendChild(this._mainStorePanel);
     }
-
     if (this._mainStorePanel) {
       this._mainStorePanel.header = `${localize('default.stores', this._hass)} (${entities.length})`;
     }
-
     entities.forEach((s, idx) => {
       const item = this._storeCards[idx];
       if (item) {
@@ -341,7 +309,6 @@ export class DiscountsCardEditor extends HTMLElement {
 
   render() {
     if (!this._hass || !this._config) return;
-
     if (!this._initialized) {
       this.innerHTML = `
         <div class="editor-form-top"></div>
@@ -351,20 +318,15 @@ export class DiscountsCardEditor extends HTMLElement {
       this._topFormContainer = this.querySelector('.editor-form-top');
       this._storesContainer = this.querySelector('.editor-stores-container');
       this._bottomFormContainer = this.querySelector('.editor-form-bottom');
-
       this._formTop = document.createElement('ha-form');
       this._formTop.addEventListener('value-changed', this._valueChanged.bind(this));
       this._topFormContainer.appendChild(this._formTop);
-
       this._formBottom = document.createElement('ha-form');
       this._formBottom.addEventListener('value-changed', this._valueChanged.bind(this));
       this._bottomFormContainer.appendChild(this._formBottom);
-
       this._initialized = true;
     }
-
     this._renderStoresEditor();
-
     const computeLabel = (schema) => {
       if (schema.name === 'title') return localize('config.title', this._hass);
       if (schema.name === 'stores') return localize('default.stores', this._hass);
@@ -374,7 +336,6 @@ export class DiscountsCardEditor extends HTMLElement {
         schema.name
       );
     };
-
     this._formTop.hass = this._hass;
     this._formTop.data = this._config;
     this._formTop.computeLabel = computeLabel;
@@ -394,7 +355,6 @@ export class DiscountsCardEditor extends HTMLElement {
         ]
       }
     ];
-
     this._formBottom.hass = this._hass;
     this._formBottom.data = this._config;
     this._formBottom.computeLabel = computeLabel;

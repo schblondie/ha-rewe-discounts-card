@@ -21,7 +21,6 @@ export function renderTodoControlsHtml(name, price, count, entityId = '', hass =
   const safeItem = encodeURIComponent(name);
   const safePrice = encodeURIComponent(price || '');
   const safeEntity = encodeURIComponent(entityId || '');
-
   if (count <= 0) {
     return `
       <button class="btn-todo-action btn-add-todo" title="${localize('default.add_to_shopping_list', hass)}" data-item="${safeItem}" data-price="${safePrice}" data-entity="${safeEntity}">
@@ -29,9 +28,7 @@ export function renderTodoControlsHtml(name, price, count, entityId = '', hass =
       </button>
     `;
   }
-
   const decTitle = count === 1 ? localize('default.remove', hass) : localize('default.decrease', hass);
-
   return `
     <button class="btn-todo-action btn-dec-todo" title="${decTitle}" data-item="${safeItem}" data-price="${safePrice}" data-entity="${safeEntity}">
       ${renderSvg(count === 1 ? ICONS.trash : ICONS.minus)}
@@ -56,7 +53,6 @@ export function renderOfferItemHtml(item, config, hass, filterQuery, getItemTodo
   const storeLabel = detectStoreLabel(storeEntity, hass);
   const existingCount = getItemTodoCount(item, storeEntity);
   const isBroken = !sanitizedImgUrl || brokenImageUrls.has(sanitizedImgUrl);
-
   return `
     <div class="offer-item">
       ${config.show_images && !isBroken
@@ -76,7 +72,6 @@ export function renderOfferItemHtml(item, config, hass, filterQuery, getItemTodo
         ? `<div class="offer-image-placeholder">${renderSvg(ICONS.placeholder)}</div>`
         : ''
     }
-
       <div class="offer-details">
         <div class="offer-title">
           ${safeName}
@@ -84,7 +79,6 @@ export function renderOfferItemHtml(item, config, hass, filterQuery, getItemTodo
         </div>
         ${item._subtitle ? `<div class="offer-subtitle">${safeSubtitle}</div>` : ''}
       </div>
-
       ${item._displayPrice
       ? `
             <div class="offer-price-container">
@@ -94,7 +88,6 @@ export function renderOfferItemHtml(item, config, hass, filterQuery, getItemTodo
           `
       : ''
     }
-
       ${config.todo?.todo_enabled
       ? `
             <div class="todo-btn-container" data-item="${encodeURIComponent(item._name)}" data-price="${encodeURIComponent(item._displayPrice || '')}" data-entity="${encodeURIComponent(storeEntity || '')}">
@@ -109,7 +102,6 @@ export function renderOfferItemHtml(item, config, hass, filterQuery, getItemTodo
 
 export function renderCategoryGroups(items, storeEntity, config, hass, isSearchMode, filterTodoOnly, categoryOpenState, getItemTodoCount) {
   const todoCategoryLayout = config.todo?.category_layout || 'keep';
-
   if (filterTodoOnly && todoCategoryLayout === 'flat') {
     return `
       <div class="offers-list flat-list">
@@ -117,14 +109,12 @@ export function renderCategoryGroups(items, storeEntity, config, hass, isSearchM
       </div>
     `;
   }
-
   const grouped = {};
   items.forEach((item) => {
     const cat = item._category;
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(item);
   });
-
   return Object.entries(grouped)
     .map(([category, catItems]) => {
       const safeCategory = escapeHtml(category);
@@ -134,9 +124,7 @@ export function renderCategoryGroups(items, storeEntity, config, hass, isSearchM
           ${catItems.map((item) => renderOfferItemHtml(item, config, hass, isSearchMode ? 'active' : '', getItemTodoCount)).join('')}
         </div>
       `;
-
       const forceOpen = (filterTodoOnly && todoCategoryLayout === 'always_open') || isSearchMode;
-
       if (config.collapsible_categories) {
         const isOpen = forceOpen || (categoryOpenState[`${storeEntity}_${category}`] ?? config.categories_open_by_default);
         return `
@@ -144,20 +132,19 @@ export function renderCategoryGroups(items, storeEntity, config, hass, isSearchM
             <summary>
               <span>${safeCategory}</span>
               <span class="badge-count">
-                ${catItems.length}${config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount} 🛒)</span>` : ''}
+                ${catItems.length}${config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount}  )</span>` : ''}
               </span>
             </summary>
             ${categoryHtml}
           </details>
         `;
       }
-
       return `
         <div class="category-group">
           <div class="category-title-static">
             <span>${safeCategory}</span>
             <span class="badge-count">
-              ${catItems.length}${config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount} 🛒)</span>` : ''}
+              ${catItems.length}${config.todo?.todo_enabled && catTodoCount > 0 ? ` <span class="badge-todo-total">(${catTodoCount}  )</span>` : ''}
             </span>
           </div>
           ${categoryHtml}
@@ -169,7 +156,6 @@ export function renderCategoryGroups(items, storeEntity, config, hass, isSearchM
 
 export function renderSkeletonHtml(config, hass, filterQuery, filterTodoOnly) {
   const hasMultipleStores = (config.entities || []).length > 1;
-
   return `
     <style>
       ${cardStyles}
@@ -180,7 +166,6 @@ export function renderSkeletonHtml(config, hass, filterQuery, filterTodoOnly) {
       }
       .btn-clear-search svg { width: 18px; height: 18px; }
     </style>
-
     <ha-card>
       <div class="card-header">
         <div class="header-left">
@@ -201,7 +186,6 @@ export function renderSkeletonHtml(config, hass, filterQuery, filterTodoOnly) {
           <span class="badge-count header-badge">0 ${localize('default.offers', hass)}</span>
         </div>
       </div>
-
       ${config.enable_search || config.todo?.todo_enabled
       ? `
             <div class="search-container">
@@ -234,7 +218,6 @@ export function renderSkeletonHtml(config, hass, filterQuery, filterTodoOnly) {
           `
       : ''
     }
-
       <div class="card-content"></div>
     </ha-card>
   `;
