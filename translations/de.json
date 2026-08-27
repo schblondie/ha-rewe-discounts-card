@@ -19,7 +19,12 @@
     "select_store": "Supermärkte auswählen",
     "remove_all_from_shopping_list": "Möchtest du alle Artikel für {storeTitle} von der Einkaufsliste entfernen?",
     "custom_items": "Eigene Artikel",
-    "search_results": "Suchergebnisse"
+    "search_results": "Suchergebnisse",
+    "clear_search": "Suche löschen",
+    "set_quantity": "Menge ändern",
+    "quantity_prompt": "Menge für \"{item}\":",
+    "decrease": "Verringern",
+    "remove": "Entfernen"
   },
   "aldi": {
     "title": "Aldi Angebote"
