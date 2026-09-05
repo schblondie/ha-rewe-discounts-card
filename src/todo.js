@@ -61,7 +61,8 @@ export async function fetchTodoCounts(hass, config, getRawOffersForEntity) {
                 _isCustom: true
               },
               s.entity,
-              hass
+              hass,
+              s
             )
           );
         }

@@ -24,7 +24,8 @@
     "set_quantity": "Change quantity",
     "quantity_prompt": "Quantity for \"{item}\":",
     "decrease": "Decrease",
-    "remove": "Remove"
+    "remove": "Remove",
+    "add": "Add"
   },
   "aldi": {
     "title": "Aldi Offers"
@@ -68,6 +69,14 @@
     "category_layout_always_open": "Always Open Category Layout",
     "category_layout_flat": "Remove Category Layout",
     "move_up": "Move Up",
-    "move_down": "Move Down"
+    "move_down": "Move Down",
+    "default_currency": "Default Currency (e.g. €)",
+    "subcategory_separator": "Subcategory Separator (e.g. - )",
+    "filter_regex": "Category Filter (Regex)",
+    "add_filter_pattern": "Enter a string or a regex pattern",
+    "add_group_member": "Enter a string or a regex pattern",
+    "add_group": "Add category group",
+    "group_name": "Group Name (Target Category)",
+    "group_members": "Group Members"
   }
 }

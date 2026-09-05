@@ -11,10 +11,14 @@ export function localize(key, hass) {
   return getNested(languages[lang]) ?? getNested(languages.en) ?? key;
 }
 
-export function formatPrice(val) {
+export function formatPrice(val, defaultCurrency = '') {
   if (val === null || val === undefined || val === '') return '';
   const str = String(val).trim();
-  return /[\ ]/.test(str) ? str : `${str}`;
+  const currency = typeof defaultCurrency === 'string' ? defaultCurrency.trim() : '';
+  if (!currency) return str;
+
+  const hasUnit = /[^\d.,\s]/.test(str);
+  return hasUnit ? str : `${str} ${currency}`.trim();
 }
 
 export function parseMultiplier(str) {
@@ -23,6 +27,42 @@ export function parseMultiplier(str) {
   return match
     ? { count: parseInt(match[1], 10), base: match[2].trim() }
     : { count: 1, base: String(str).trim() };
+}
+
+export function matchesFilterCategory(category, filterEntry) {
+  if (!category || !filterEntry) return false;
+  const cat = String(category).trim();
+
+  if (filterEntry.startsWith('Regex: ')) {
+    const pattern = filterEntry.slice(7).trim();
+    const literal = pattern.match(/^\/(.+)\/([a-z]*)$/i);
+    try {
+      const reg = literal ? new RegExp(literal[1], literal[2] || 'i') : new RegExp(pattern, 'i');
+      return reg.test(cat);
+    } catch {
+      return false;
+    }
+  }
+
+  if (filterEntry.startsWith('Includes: ')) {
+    const term = filterEntry.slice(10).trim().toLowerCase();
+    return cat.toLowerCase().includes(term);
+  }
+
+  return cat.toLowerCase() === String(filterEntry).trim().toLowerCase();
+}
+
+export function resolveCategoryGroup(category, categoryGroups = [], rawCategory = '') {
+  if (!category || !Array.isArray(categoryGroups)) return category;
+  for (const group of categoryGroups) {
+    if (!group.name || !Array.isArray(group.members)) continue;
+    const matches = group.members.some((member) =>
+      matchesFilterCategory(category, member) ||
+      (rawCategory && matchesFilterCategory(rawCategory, member))
+    );
+    if (matches) return group.name.trim();
+  }
+  return category;
 }
 
 export function detectStoreLabel(entityId = '', hass = null) {
@@ -66,7 +106,7 @@ export function sanitizeImageUrl(url) {
   }
 }
 
-export function normalizeOffer(item, storeEntity, hass = null) {
+export function normalizeOffer(item, storeEntity, hass = null, storeConf = null) {
   const name =
     item.product ||
     item.title ||
@@ -91,24 +131,37 @@ export function normalizeOffer(item, storeEntity, hass = null) {
   } else if (!subtitle && item.brand && item.brand !== name) {
     subtitle = item.brand;
   }
-  // const validInfo = item.valid_until || item.valid_date || item.valid_from || '';
-  // if (validInfo) {
-  //   subtitle = subtitle ? `${subtitle}   ${validInfo}` : validInfo;
-  // }
-  const category =
+
+  const rawCategory =
     item.category ||
     item.category_name ||
     item.section ||
     localize('default.other_offers', hass);
+
+  let category = rawCategory;
+  const sep = storeConf?.subcategory_separator;
+  if (typeof sep === 'string' && sep.trim() !== '' && typeof category === 'string' && category.includes(sep)) {
+    const parts = category.split(sep);
+    if (parts[0] && parts[0].trim()) {
+      category = parts[0].trim();
+    }
+  }
+
+  if (storeConf?.category_groups?.length) {
+    category = resolveCategoryGroup(category, storeConf.category_groups, rawCategory);
+  }
+
+  const defaultCurrency = typeof storeConf?.default_currency === 'string' ? storeConf.default_currency.trim() : '';
+
   return {
     ...item,
     _storeEntity: storeEntity,
     _name: name,
     _image: image,
     _price: price,
-    _displayPrice: formatPrice(price),
+    _displayPrice: formatPrice(price, defaultCurrency),
     _oldPrice: oldPrice,
-    _displayOldPrice: formatPrice(oldPrice),
+    _displayOldPrice: formatPrice(oldPrice, defaultCurrency),
     _subtitle: subtitle,
     _category: category,
     _searchKey: `${name} ${category} ${subtitle}`.toLowerCase()
