@@ -19,7 +19,13 @@
     "select_store": "Supermärkte auswählen",
     "remove_all_from_shopping_list": "Möchtest du alle Artikel für {storeTitle} von der Einkaufsliste entfernen?",
     "custom_items": "Eigene Artikel",
-    "search_results": "Suchergebnisse"
+    "search_results": "Suchergebnisse",
+    "clear_search": "Suche löschen",
+    "set_quantity": "Menge ändern",
+    "quantity_prompt": "Menge für \"{item}\":",
+    "decrease": "Verringern",
+    "remove": "Entfernen",
+    "add": "Hinzufügen"
   },
   "aldi": {
     "title": "Aldi Angebote"
@@ -63,7 +69,14 @@
     "category_layout_always_open": "Kategorien immer geöffnet",
     "category_layout_flat": "Keine Kategorisierung der Angebote",
     "move_up": "Nach oben verschieben",
-    "move_down": "Nach unten verschieben"
-
+    "move_down": "Nach unten verschieben",
+    "default_currency": "Standard-Währung (z. B. €)",
+    "subcategory_separator": "Unterkategorie-Trennzeichen (z. B. - )",
+    "filter_regex": "Kategorie-Filter (Regex)",
+    "add_filter_pattern": "Zeichenkette oder Regex-Muster eingeben",
+    "add_group_member": "Zeichenkette oder Regex-Muster eingeben",
+    "add_group": "Kategorie-Gruppe hinzufügen",
+    "group_name": "Gruppenname (Zielkategorie)",
+    "group_members": "Gruppenmitglieder"
   }
 }
